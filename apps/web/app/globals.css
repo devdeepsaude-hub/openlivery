@@ -714,11 +714,11 @@ textarea { line-height: 1.55; }
 .portal-client-avatar { width: 48px; height: 48px; display: grid; place-items: center; color: var(--portal-color); border-radius: 9px; background: var(--accent-soft); font-weight: 700; }
 .portal-login-form h2 { margin: 2px 0 -12px; font-size: 24px; }
 .portal-login-form p { color: var(--muted); }
-.portal-app { min-height: 100vh; display: grid; grid-template-columns: 230px minmax(0,1fr); background: var(--canvas); }
-.portal-nav { padding: 20px 14px; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--surface); }
+.portal-app { min-height: 100vh; display: grid; grid-template-columns: 248px minmax(0,1fr); background: var(--canvas); }
+.portal-nav { position: relative; padding: 20px 14px; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--surface); }
 .portal-nav .portal-brand { padding: 0 8px 22px; border-bottom: 1px solid var(--line-soft); }
 .portal-nav nav { padding-top: 18px; display: flex; flex-direction: column; gap: 4px; }
-.portal-nav nav a { height: 42px; padding: 0 10px; display: flex; align-items: center; gap: 10px; color: var(--muted); border-radius: 7px; }
+.portal-nav nav a { height: 42px; padding: 0 10px; display: flex; align-items: center; gap: 9px; color: var(--muted); border-radius: 7px; font-size: 13.5px; }
 .portal-nav nav a.active { color: var(--ink); background: var(--surface-3); }
 .portal-nav nav a { cursor: pointer; }
 .portal-nav nav a.disabled { cursor: default; opacity: .55; }
@@ -758,6 +758,25 @@ textarea { line-height: 1.55; }
 .confirm-word code { align-self: flex-start; padding: 8px 14px; border: 1px dashed var(--red); border-radius: 7px; color: var(--red-text); background: var(--red-soft); font-size: 15px; font-weight: 700; letter-spacing: .12em; }
 .confirm-word + input { margin-top: -8px; }
 .portal-nav nav a.disabled { opacity: .45; }
+/* The panel folded to its icons (the toggle on its edge, as the agency's
+   sidebar has). Labels hide, each item keeps its title for a tooltip, and the
+   unread count sits on the icon. */
+.portal-nav nav a > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The generic `.portal-nav > button` rule strips borders and backgrounds; the
+   toggle needs the same solid disc the agency sidebar has. */
+.portal-nav > button.sidebar-toggle { position: absolute; top: 24px; right: -14px; width: 28px; height: 28px; margin: 0; padding: 0; display: grid; place-items: center; gap: 0; color: var(--muted); border: 1px solid var(--line); border-radius: 50%; background: var(--surface); box-shadow: var(--shadow); font-size: 0; }
+.portal-nav > button.sidebar-toggle:hover { color: var(--ink); border-color: var(--line-strong); }
+.portal-app.nav-collapsed { grid-template-columns: 72px minmax(0,1fr); }
+.nav-collapsed .portal-nav { padding-left: 10px; padding-right: 10px; }
+.nav-collapsed .portal-nav .portal-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+.nav-collapsed .portal-nav .portal-brand strong { display: none; }
+.nav-collapsed .portal-nav nav a { position: relative; padding: 0; justify-content: center; gap: 0; }
+.nav-collapsed .portal-nav nav a > span { display: none; }
+.nav-collapsed .portal-nav nav a .nav-count { position: absolute; top: 4px; right: 4px; margin: 0; }
+.nav-collapsed .portal-nav-foot > button { justify-content: center; padding-left: 0; padding-right: 0; }
+.nav-collapsed .portal-nav-foot > button > span:not(.availability-switch) { display: none; }
+.nav-collapsed .portal-nav .availability-toggle { gap: 0; }
+.nav-collapsed .portal-nav .availability-switch { display: none; }
 .portal-nav > button { margin-top: auto; height: 40px; display: flex; align-items: center; gap: 9px; color: var(--muted); border: 0; background: transparent; }
 .portal-main { min-width: 0; padding: 32px; }
 .portal-main > header { margin-bottom: 22px; display: flex; align-items: flex-end; justify-content: space-between; }
@@ -1431,6 +1450,18 @@ textarea { line-height: 1.55; }
   align-items: center;
 }
 .access-intro { padding: 56px 0; }
+/* The stores' badges, served by the stores: a quiet row under the preview on
+   the sign-in page and beside the "Mobile app" row under Preferences. */
+.app-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.app-badges a { display: block; line-height: 0; overflow: hidden; }
+/* Google's PNG carries a transparent margin that Apple's SVG does not; the
+   extra height and negative margins trim it so both read the same size. */
+.app-badges img { height: 40px; width: auto; display: block; }
+.app-badges img.badge-google { height: 48px; margin: -4px -6px; }
+.access-apps { margin-top: 22px; display: flex; flex-direction: column; gap: 8px; }
+.access-apps small { color: var(--muted); font-size: 13px; font-weight: 500; }
+.mobile-app-row .app-badges img { height: 34px; }
+.mobile-app-row .app-badges img.badge-google { height: 41px; margin: -3.5px -5px; }
 .access-eyebrow { color: var(--accent-text); font-size: 12px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
 .portal-access .access-eyebrow { color: var(--portal-color, var(--accent-text)); }
 .access-intro > h1 { max-width: 660px; margin: 12px 0 16px; font-size: clamp(40px, 4.5vw, 58px); font-weight: 600; line-height: 1.04; letter-spacing: -2.5px; }
@@ -2566,7 +2597,10 @@ html[data-theme-transition], html[data-theme-transition] *, html[data-theme-tran
 @media (max-width: 850px) {
   .portal-app { grid-template-columns: 1fr; }
   .portal-nav { position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); flex-direction: row; border-right: 0; border-top: 1px solid var(--line); background: var(--surface); box-shadow: 0 -4px 16px rgba(var(--shadow-rgb), calc(.06 * var(--shadow-k))); }
-  .portal-nav .portal-brand, .portal-nav > .portal-nav-foot { display: none; }
+  .portal-nav .portal-brand, .portal-nav > .portal-nav-foot, .portal-nav > button.sidebar-toggle { display: none; }
+  .portal-app.nav-collapsed { grid-template-columns: 1fr; }
+  .nav-collapsed .portal-nav nav a > span { display: block; }
+  .nav-collapsed .portal-nav nav a { padding: 0 4px; gap: 3px; }
   .portal-nav nav { width: 100%; padding: 0; flex-direction: row; gap: 4px; }
   .portal-nav nav a { position: relative; flex: 1 1 0; height: 50px; padding: 0 4px; flex-direction: column; justify-content: center; gap: 3px; font-size: 11px; font-weight: 600; }
   .portal-nav nav a .nav-count { position: absolute; top: 4px; right: calc(50% - 24px); margin: 0; }

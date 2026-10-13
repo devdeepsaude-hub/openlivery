@@ -75,6 +75,18 @@ class Settings(BaseSettings):
     push_provider: str = "none"
     push_webhook_url: str = ""
     push_webhook_secret: str = ""
+    # Web push for the portal needs no provider, only a VAPID key pair the
+    # deployment owns: `python -m app.webpush_keys` prints one. Empty leaves
+    # browsers out; the mobile provider above is independent of it. The
+    # subject is who the browser vendors may contact about this sender.
+    push_webpush_private_key: str = ""
+    push_webpush_subject: str = ""
+
+    # Where the portal's people can get a mobile app for it, if the deployment
+    # publishes one: the store pages, shown as the stores' own badges on the
+    # portal's sign-in page and under Preferences. Empty shows nothing.
+    portal_ios_app_url: str = ""
+    portal_android_app_url: str = ""
 
     model_config = SettingsConfigDict(
         env_file=(REPO_ROOT / ".env", APP_DIR / ".env"),

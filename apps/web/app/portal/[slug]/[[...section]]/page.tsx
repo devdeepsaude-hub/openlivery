@@ -3,7 +3,9 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { currentSections, showSections } from "@/lib/section-path";
-import { Archive, ArchiveRestore, ArrowLeft, Ban, BarChart3, Bot, Building2, CheckCircle2, CheckSquare, Clock, Contact as ContactIcon, FileText, Filter, Images, Inbox, LoaderCircle, LogOut, Megaphone, MessageCircle, MoreHorizontal, MessageSquareText, Reply, Search, Send, Settings, ShieldCheck, SmilePlus, Square, Trash2, UserRound, Users, X } from "lucide-react";
+import { onWorkerMessage, syncPush } from "@/lib/web-push";
+import { AppBadges } from "@/components/app-badges";
+import { Archive, ArchiveRestore, ArrowLeft, Ban, BarChart3, Bot, Building2, CheckCircle2, CheckSquare, Clock, Contact as ContactIcon, FileText, Filter, Images, Inbox, LoaderCircle, LogOut, Megaphone, MessageCircle, MoreHorizontal, MessageSquareText, PanelLeftClose, PanelLeftOpen, Reply, Search, Send, Settings, ShieldCheck, SmilePlus, Square, Trash2, UserRound, Users, X } from "lucide-react";
 import { useCannedReplies } from "../canned";
 import { ContactsView } from "../contacts";
 import { ReportsView } from "../reports";
@@ -30,6 +32,8 @@ import type { Attachment, Conversation, Message, PortalChannel, PortalPublic, Te
 import type { ContactValues } from "@/lib/contact-variables";
 
 const POLL_MS = 8000;
+// The side panel folded to its icons, remembered per browser like the agency's.
+const NAV_COLLAPSED_KEY = "openlivery.portal.nav.collapsed";
 
 function chime() {
   try {
@@ -74,7 +78,7 @@ export default function PortalPage() {
   async function logout() { await api(`/portal/${slug}/logout`, { method: "POST" }); setSession(null); }
   if (loading) return <div className="portal-loader"><LoaderCircle className="spin" /> {t("portal.loader.loading")}</div>;
   if (!portal) return <div className="portal-loader">{error || t("portal.loader.unavailable")}</div>;
-  if (!session) return <main className="access-page portal-access" style={{ "--portal-color": portal.agency_brand_color } as React.CSSProperties}><header className="access-topbar"><div className="access-brand portal-access-brand">{portal.agency_logo_url ? <img src={`${portal.agency_logo_url}`} alt={portal.agency_name} /> : <span>{portal.agency_name.slice(0, 1)}</span>}<strong>{portal.agency_name}</strong></div><small>{t("portal.access.secureBadge")}</small></header><div className="access-layout"><section className="access-intro"><span className="access-eyebrow">{t("portal.access.eyebrow")}</span><h1>{portal.portal_title}</h1><p>{t("portal.access.intro")}</p><div className="access-preview portal-preview" aria-hidden="true"><header><div><span className="preview-logo"><Inbox size={16} /></span><strong>{t("portal.access.preview.inbox")}</strong></div><small>{t("portal.access.preview.conversationsCount")}</small></header><div className="portal-preview-thread"><div className="active"><span className="preview-icon"><UserRound size={16} /></span><p><strong>{t("portal.access.preview.newInquiry")}</strong><small>{t("portal.access.preview.newInquiryMeta")}</small></p><em>2</em></div><div><span className="preview-icon"><MessageSquareText size={16} /></span><p><strong>{t("portal.access.preview.salesFollowUp")}</strong><small>{t("portal.access.preview.salesFollowUpMeta")}</small></p></div><div><span className="preview-icon"><Building2 size={16} /></span><p><strong>{t("portal.access.preview.servicesInfo")}</strong><small>{t("portal.access.preview.servicesInfoMeta")}</small></p></div></div><footer><span><Bot size={15} /> {t("portal.access.preview.agentReplying")}</span><strong>{t("portal.access.preview.takeControl")}</strong></footer></div></section><section className="access-form-wrap"><form className="access-card access-form" onSubmit={login}><span className="portal-client-avatar">{portal.client_name.slice(0, 2).toUpperCase()}</span><span className="access-card-label"><ShieldCheck size={15} /> {t("portal.access.form.cardLabel")}</span><h2>{t("portal.access.form.welcome", { name: portal.client_name })}</h2><p>{t("portal.access.form.subtitle")}</p><label>{t("portal.access.form.emailLabel")}<input name="email" type="email" required autoFocus placeholder={t("portal.access.form.emailPlaceholder")} /></label><label>{t("portal.access.form.passwordLabel")}<PasswordInput name="password" required placeholder={t("portal.access.form.passwordPlaceholder")} /></label>{error && <Alert>{error}</Alert>}<button className="button primary full">{t("portal.access.form.submit")}</button><small className="access-security"><ShieldCheck size={14} /> {t("portal.access.form.security", { name: portal.agency_name })}</small></form></section></div></main>;
+  if (!session) return <main className="access-page portal-access" style={{ "--portal-color": portal.agency_brand_color } as React.CSSProperties}><header className="access-topbar"><div className="access-brand portal-access-brand">{portal.agency_logo_url ? <img src={`${portal.agency_logo_url}`} alt={portal.agency_name} /> : <span>{portal.agency_name.slice(0, 1)}</span>}<strong>{portal.agency_name}</strong></div><small>{t("portal.access.secureBadge")}</small></header><div className="access-layout"><section className="access-intro"><span className="access-eyebrow">{t("portal.access.eyebrow")}</span><h1>{portal.portal_title}</h1><p>{t("portal.access.intro")}</p><div className="access-preview portal-preview" aria-hidden="true"><header><div><span className="preview-logo"><Inbox size={16} /></span><strong>{t("portal.access.preview.inbox")}</strong></div><small>{t("portal.access.preview.conversationsCount")}</small></header><div className="portal-preview-thread"><div className="active"><span className="preview-icon"><UserRound size={16} /></span><p><strong>{t("portal.access.preview.newInquiry")}</strong><small>{t("portal.access.preview.newInquiryMeta")}</small></p><em>2</em></div><div><span className="preview-icon"><MessageSquareText size={16} /></span><p><strong>{t("portal.access.preview.salesFollowUp")}</strong><small>{t("portal.access.preview.salesFollowUpMeta")}</small></p></div><div><span className="preview-icon"><Building2 size={16} /></span><p><strong>{t("portal.access.preview.servicesInfo")}</strong><small>{t("portal.access.preview.servicesInfoMeta")}</small></p></div></div><footer><span><Bot size={15} /> {t("portal.access.preview.agentReplying")}</span><strong>{t("portal.access.preview.takeControl")}</strong></footer></div>{(portal.ios_app_url || portal.android_app_url) && <div className="access-apps"><small>{t("portal.access.apps")}</small><AppBadges ios={portal.ios_app_url} android={portal.android_app_url} /></div>}</section><section className="access-form-wrap"><form className="access-card access-form" onSubmit={login}><span className="portal-client-avatar">{portal.client_name.slice(0, 2).toUpperCase()}</span><span className="access-card-label"><ShieldCheck size={15} /> {t("portal.access.form.cardLabel")}</span><h2>{t("portal.access.form.welcome", { name: portal.client_name })}</h2><p>{t("portal.access.form.subtitle")}</p><label>{t("portal.access.form.emailLabel")}<input name="email" type="email" required autoFocus placeholder={t("portal.access.form.emailPlaceholder")} /></label><label>{t("portal.access.form.passwordLabel")}<PasswordInput name="password" required placeholder={t("portal.access.form.passwordPlaceholder")} /></label>{error && <Alert>{error}</Alert>}<button className="button primary full">{t("portal.access.form.submit")}</button><small className="access-security"><ShieldCheck size={14} /> {t("portal.access.form.security", { name: portal.agency_name })}</small></form></section></div></main>;
   return <PortalInbox slug={slug} portal={portal} session={session} logout={logout} />;
 }
 
@@ -115,6 +119,9 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   // Conversations handed to me: the first poll only learns what is mine,
   // every later one announces what is new, so a transfer is felt at once.
   const mineKnownRef = useRef<Set<string> | null>(null);
+  // Whether this browser is subscribed to push: then the server rings it and
+  // the page must not raise a second notification of its own.
+  const pushSubscribedRef = useRef(false);
   const announceAssignments = useCallback((mine: { id: string; title: string }[]) => {
     if (!session.user_id) return;
     const known = mineKnownRef.current;
@@ -126,7 +133,7 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
         for (const row of fresh) {
           const text = t("portal.inbox.assignment.received", { title: row.title });
           toast.info(text);
-          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+          if (!pushSubscribedRef.current && typeof Notification !== "undefined" && Notification.permission === "granted") {
             try { new Notification(portal.portal_title, { body: text }); } catch { /* blocked */ }
           }
         }
@@ -134,11 +141,12 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
     }
     mineKnownRef.current = next;
   }, [session.user_id, t, toast, portal.portal_title]);
+  // A subscribed browser registers again on every load, so the subscription
+  // belongs to whoever is signed in now. Switching it on lives in Settings.
   useEffect(() => {
-    if (typeof Notification !== "undefined" && Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {});
-    }
-  }, []);
+    if (!session.user_id) return;
+    syncPush(slug).then((subscribed) => { pushSubscribedRef.current = subscribed; });
+  }, [slug, session.user_id]);
   const [status, setStatus] = useState<InboxKind>("open");
   // Archive and delete confirmations. "all" acts on every conversation the current inbox holds.
   const [archivingAll, setArchivingAll] = useState(false);
@@ -185,6 +193,13 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   // written whenever it changes.
   const [reportsSection, setReportsSection] = useState<"summary" | "conversations">("summary");
   const [settingsTab, setSettingsTab] = useState("preferences");
+  const [navCollapsed, setNavCollapsed] = useState(false);
+  useEffect(() => { try { setNavCollapsed(localStorage.getItem(NAV_COLLAPSED_KEY) === "1"); } catch { /* storage unavailable */ } }, []);
+  function toggleNav() {
+    const next = !navCollapsed;
+    setNavCollapsed(next);
+    try { localStorage.setItem(NAV_COLLAPSED_KEY, next ? "1" : "0"); } catch { /* storage unavailable */ }
+  }
   const [contactOpen, setContactOpen] = useState<string | null>(null);
   const [addressReady, setAddressReady] = useState(false);
   const addressBase = useRef("");
@@ -203,6 +218,24 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
     }).catch(() => {});
     setAddressReady(true);
   }, [slug]);
+  // The service worker speaks when a push arrives while this window is
+  // visible (shown here instead of over the page) and when a notification is
+  // clicked (open that conversation without reloading).
+  useEffect(() => onWorkerMessage((message) => {
+    if (message.type === "push") {
+      chime();
+      toast.info(message.payload.body ? `${message.payload.title}: ${message.payload.body}` : message.payload.title);
+      return;
+    }
+    const id = message.data.conversation_id;
+    if (!id) return;
+    setView("inbox");
+    api<Conversation>(`/portal/${slug}/conversations/${id}`).then((detail) => {
+      setSelected(detail);
+      setStatus(detail.archived_at ? "archived" : detail.status === "resolved" ? "resolved" : "open");
+      setTab("all"); setChannelFilter("");
+    }).catch(() => {});
+  }), [slug, toast]);
   useEffect(() => {
     if (!addressReady) return;
     showSections(addressBase.current, [view, view === "inbox" ? selected?.id : view === "contacts" ? contactOpen : view === "reports" ? reportsSection : view === "settings" ? settingsTab : null]);
@@ -457,8 +490,8 @@ function PortalInbox({ slug, portal, session, logout }: { slug: string; portal: 
   // the side nav; on a phone that nav becomes a bottom bar with room for the
   // four links only, so the same foot is shown at the top of Settings instead
   // (the stylesheet shows one or the other, never both).
-  const navFoot = <div className="portal-nav-foot">{session.user_id && <button className={`availability-toggle ${availability}`} onClick={toggleAvailability} title={availability === "online" ? t("portal.availability.setAway") : t("portal.availability.setOnline")} aria-pressed={availability === "online"}><i /><span className="availability-name"><strong>{session.user_name}</strong><small>{availability === "online" ? t("portal.availability.online") : t("portal.availability.away")}</small></span><span className="availability-switch" aria-hidden="true"><b /></span></button>}<button onClick={logout}><LogOut size={17} /> {t("portal.inbox.nav.logout")}</button></div>;
-  return <main className="portal-app" style={{ "--portal-color": portal.agency_brand_color } as React.CSSProperties}><aside className="portal-nav"><div className="portal-brand">{portal.client_logo_url || portal.agency_logo_url ? <img src={`${portal.client_logo_url || portal.agency_logo_url}`} alt="Logo" /> : <span>{portal.client_name.slice(0, 1)}</span>}<strong>{portal.client_name}</strong></div><nav><a className={view === "inbox" ? "active" : ""} onClick={() => setView("inbox")}><Inbox size={18} /> {t("portal.inbox.nav.inbox")}{summary && summary.unread > 0 && view !== "inbox" && <em className="nav-count">{summary.unread}</em>}</a><a className={view === "contacts" ? "active" : ""} onClick={() => setView("contacts")}><ContactIcon size={18} /> {t("portal.inbox.nav.contacts")}</a>{can("reports.view") && <a className={view === "reports" ? "active" : ""} onClick={() => setView("reports")}><BarChart3 size={18} /> {t("portal.inbox.nav.reports")}</a>}<a className={view === "settings" ? "active" : ""} onClick={() => setView("settings")}><Settings size={18} /> {t("portal.inbox.nav.settings")}</a></nav>{navFoot}</aside><section className="portal-main"><header><div><small>{t("portal.inbox.header.eyebrow")}</small><h1>{view === "contacts" ? t("portal.inbox.nav.contacts") : view === "settings" ? t("portal.inbox.nav.settings") : view === "reports" ? t("portal.inbox.nav.reports") : portal.portal_title}</h1></div>{view === "inbox" && <span>{t("portal.inbox.header.conversationsCount", { count: items.length })}</span>}</header>{view === "settings" && <div className="portal-foot-mobile">{navFoot}</div>}{view === "settings" ? <SettingsView slug={slug} templatesSupported={templatesSupported} can={can} tab={settingsTab} onTab={setSettingsTab} /> : view === "reports" && can("reports.view") ? <ReportsView slug={slug} section={reportsSection} onSection={setReportsSection} openConversation={(row) => openFromContact({ id: row.id, status: row.status, archived_at: row.archived_at } as Conversation)} /> : view === "contacts" ? <ContactsView slug={slug} channels={channels} openConversation={openFromContact} can={can} agentName={session.user_name || ""} contactId={contactOpen} onSelect={setContactOpen} /> : <div className={`portal-inbox${selected ? " has-thread" : ""}`}><aside onScroll={onListScroll}>
+  const navFoot = <div className="portal-nav-foot">{session.user_id && <button className={`availability-toggle ${availability}`} onClick={toggleAvailability} title={availability === "online" ? t("portal.availability.setAway") : t("portal.availability.setOnline")} aria-pressed={availability === "online"}><i /><span className="availability-name"><strong>{session.user_name}</strong><small>{availability === "online" ? t("portal.availability.online") : t("portal.availability.away")}</small></span><span className="availability-switch" aria-hidden="true"><b /></span></button>}<button onClick={logout} title={t("portal.inbox.nav.logout")}><LogOut size={17} /> <span>{t("portal.inbox.nav.logout")}</span></button></div>;
+  return <main className={`portal-app${navCollapsed ? " nav-collapsed" : ""}`} style={{ "--portal-color": portal.agency_brand_color } as React.CSSProperties}><aside className="portal-nav"><button type="button" className="sidebar-toggle" onClick={toggleNav} aria-label={navCollapsed ? t("shell.expandMenu") : t("shell.collapseMenu")} title={navCollapsed ? t("shell.expandMenu") : t("shell.collapseMenu")}>{navCollapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}</button><div className="portal-brand">{portal.client_logo_url || portal.agency_logo_url ? <img src={`${portal.client_logo_url || portal.agency_logo_url}`} alt="Logo" /> : <span>{portal.client_name.slice(0, 1)}</span>}<strong>{portal.client_name}</strong></div><nav><a className={view === "inbox" ? "active" : ""} onClick={() => setView("inbox")} title={t("portal.inbox.nav.inbox")}><Inbox size={18} /> <span>{t("portal.inbox.nav.inbox")}</span>{summary && summary.unread > 0 && view !== "inbox" && <em className="nav-count">{summary.unread}</em>}</a><a className={view === "contacts" ? "active" : ""} onClick={() => setView("contacts")} title={t("portal.inbox.nav.contacts")}><ContactIcon size={18} /> <span>{t("portal.inbox.nav.contacts")}</span></a>{can("reports.view") && <a className={view === "reports" ? "active" : ""} onClick={() => setView("reports")} title={t("portal.inbox.nav.reports")}><BarChart3 size={18} /> <span>{t("portal.inbox.nav.reports")}</span></a>}<a className={view === "settings" ? "active" : ""} onClick={() => setView("settings")} title={t("portal.inbox.nav.settings")}><Settings size={18} /> <span>{t("portal.inbox.nav.settings")}</span></a></nav>{navFoot}</aside><section className="portal-main"><header><div><small>{t("portal.inbox.header.eyebrow")}</small><h1>{view === "contacts" ? t("portal.inbox.nav.contacts") : view === "settings" ? t("portal.inbox.nav.settings") : view === "reports" ? t("portal.inbox.nav.reports") : portal.portal_title}</h1></div>{view === "inbox" && <span>{t("portal.inbox.header.conversationsCount", { count: items.length })}</span>}</header>{view === "settings" && <div className="portal-foot-mobile">{navFoot}</div>}{view === "settings" ? <SettingsView slug={slug} templatesSupported={templatesSupported} can={can} tab={settingsTab} onTab={setSettingsTab} /> : view === "reports" && can("reports.view") ? <ReportsView slug={slug} section={reportsSection} onSection={setReportsSection} openConversation={(row) => openFromContact({ id: row.id, status: row.status, archived_at: row.archived_at } as Conversation)} /> : view === "contacts" ? <ContactsView slug={slug} channels={channels} openConversation={openFromContact} can={can} agentName={session.user_name || ""} contactId={contactOpen} onSelect={setContactOpen} /> : <div className={`portal-inbox${selected ? " has-thread" : ""}`}><aside onScroll={onListScroll}>
       <div className="inbox-search"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("inbox.searchPlaceholder")} />{status !== "archived" && <button type="button" className={`inbox-filter-toggle${filtersOpen ? " open" : ""}${channelFilter || teamFilter ? " active" : ""}`} onClick={() => setFiltersOpen((v) => !v)} title={t("inbox.filters")} aria-label={t("inbox.filters")} aria-pressed={filtersOpen}><Filter size={16} /></button>}</div>
       {status !== "archived" && filtersOpen && <div className="inbox-filter-row">
         <label className="inbox-mini-select" title={t("inbox.filterChannel")}><MessageCircle size={14} /><select aria-label={t("inbox.filterChannel")} value={channelFilter} onChange={(event) => { setChannelFilter(event.target.value); setSelected(null); }}><option value="">{t("inbox.allChannels")}</option>{INBOX_CHANNELS.filter((value) => value !== "playground").map((value) => <option key={value} value={value}>{channelLabel(value)}</option>)}</select></label>
