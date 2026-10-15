@@ -1,6 +1,7 @@
 package com.example.inbox.ui
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -83,6 +84,7 @@ fun ComposerView(
     val accent = LocalAccent.current
     val palette = accent.palette
     val context = LocalContext.current
+    val hasCamera = remember(context) { context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) }
     val recorder = remember { Recorder(context) }
     var pending by remember { mutableStateOf<OutgoingFile?>(null) }
     var attachMenu by remember { mutableStateOf(false) }
@@ -121,7 +123,13 @@ fun ComposerView(
         if (granted) {
             val target = AttachmentCache.stagingFile("photo.jpg")
             cameraTarget = target
-            takePicture.launch(FileProvider.getUriForFile(context, context.packageName + ".files", target))
+            try {
+                takePicture.launch(FileProvider.getUriForFile(context, context.packageName + ".files", target))
+            } catch (_: ActivityNotFoundException) {
+                target.delete()
+                cameraTarget = null
+                notice = c.pickFailed
+            }
         }
     }
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -194,7 +202,7 @@ fun ComposerView(
                         val type = when { capabilities.image == true && capabilities.video == true -> ActivityResultContracts.PickVisualMedia.ImageAndVideo; capabilities.video == true -> ActivityResultContracts.PickVisualMedia.VideoOnly; else -> ActivityResultContracts.PickVisualMedia.ImageOnly }
                         pickMedia.launch(PickVisualMediaRequest(type))
                     }
-                    if (capabilities.image == true) SheetRow(Icons.Default.PhotoCamera, s.fromCamera) { attachMenu = false; cameraPermission.launch(Manifest.permission.CAMERA) }
+                    if (capabilities.image == true && hasCamera) SheetRow(Icons.Default.PhotoCamera, s.fromCamera) { attachMenu = false; cameraPermission.launch(Manifest.permission.CAMERA) }
                 }
                 if (canAttach) SheetRow(Icons.Default.Description, c.file) { attachMenu = false; pickFile.launch(arrayOf("*/*")) }
             }
