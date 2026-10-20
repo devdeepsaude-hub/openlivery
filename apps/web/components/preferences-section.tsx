@@ -28,6 +28,7 @@ export function PreferencesSection({ pushSlug }: { pushSlug?: string } = {}) {
           <div role="group" aria-label={t("settings.preferences.language")}>
             <button type="button" className={lang === "en" ? "active" : ""} onClick={() => setLang("en")} aria-pressed={lang === "en"}>English</button>
             <button type="button" className={lang === "es" ? "active" : ""} onClick={() => setLang("es")} aria-pressed={lang === "es"}>Español</button>
+            <button type="button" className={lang === "pt" ? "active" : ""} onClick={() => setLang("pt")} aria-pressed={lang === "pt"}>Português</button>
           </div>
         </div>
         <div className="pref-row">

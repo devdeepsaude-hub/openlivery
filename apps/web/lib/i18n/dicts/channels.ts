@@ -11,4 +11,10 @@ const es: typeof en = {
   webchat: { title: "Chat web" },
 };
 
-export const channels = { en, es };
+const pt: typeof en = {
+  whatsappCloud: { title: "WhatsApp API" },
+  whatsapp: { title: "WhatsApp QR" },
+  webchat: { title: "Chat web" },
+};
+
+export const channels = { en, es, pt };

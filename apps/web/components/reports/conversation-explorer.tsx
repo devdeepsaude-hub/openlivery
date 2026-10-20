@@ -73,7 +73,7 @@ export function ConversationExplorer({ basePath, scope, options, onOpen }: {
   onOpen?: (row: ConversationReportRow) => void;
 }) {
   const { t, lang } = useLanguage();
-  const locale = lang === "es" ? "es" : "en";
+  const locale = lang === "pt" ? "pt-BR" : lang;
   const storageKey = `openlivery.reports.columns.${scope}`;
   const allowed = useMemo(() => COLUMNS.filter((c) => (scope === "agency" ? !PORTAL_ONLY.includes(c) : !AGENCY_ONLY.includes(c))), [scope]);
 

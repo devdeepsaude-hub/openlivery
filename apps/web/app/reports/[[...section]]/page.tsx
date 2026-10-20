@@ -38,7 +38,7 @@ const REPORT_TABS: ReportTab[] = ["summary", "costs", "conversations"];
 export default function ReportsPage() {
   const { t, lang } = useLanguage();
   const toast = useToast();
-  const locale = lang === "es" ? "es" : "en";
+  const locale = lang === "pt" ? "pt-BR" : lang;
   const [tab, setTab] = useState<ReportTab>("summary");
   const [range, setRange] = useState<number | "custom">(30);
   const [customFrom, setCustomFrom] = useState(daysAgoISO(29));

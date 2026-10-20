@@ -243,7 +243,7 @@ export default function WidgetPage() {
   const color = config.color || "#635bff";
   const showGreeting = config.greeting && messages.length === 0;
   const renderMessage = (message: Msg, index: number) => <div key={message.id ?? index} className={`widget-msg ${message.role}`}><div className="widget-msg-body"><MessageAttachments attachments={message.attachments} urlFor={attachmentUrl} gallery={gallery} stamp={message.created_at ? formatTime(message.created_at, lang) : undefined} />{message.sender_type === "human" && message.sender_name && <small className="widget-sender">{message.sender_name}</small>}{message.content && <div className="widget-bubble"><RichText text={message.content} />{message.created_at && <time className="msg-time">{formatTime(message.created_at, lang)}</time>}</div>}</div></div>;
-  const dateOf = (iso: string) => new Date(iso).toLocaleDateString(lang === "es" ? "es" : "en", { day: "numeric", month: "short", year: "numeric" });
+  const dateOf = (iso: string) => new Date(iso).toLocaleDateString(lang === "pt" ? "pt-BR" : lang, { day: "numeric", month: "short", year: "numeric" });
 
   if (view !== "chat") {
     return (

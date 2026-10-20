@@ -12,7 +12,7 @@ One OpenLivery installation serves one agency, which creates and manages AI agen
 - `apps/web/` — Next.js 16 (App Router) + React 19 + TypeScript + Tailwind
 - `apps/whatsapp/` — Go bridge over whatsmeow (WhatsApp Web protocol)
 
-**Language convention (always follow):** all code — routes, identifiers, comments, commit messages, and docs — is written in English, always. The only thing that is localized is the end-user UI, through a typed i18n system (`apps/web/lib/i18n`): English (default) and Spanish for now. Never introduce non-English in code or docs; put user-facing copy behind i18n keys instead. (The system prompt sent to the LLM in `apps/api/app/services/knowledge.py` is a deliberate exception, kept in the customer's language.)
+**Language convention (always follow):** all code — routes, identifiers, comments, commit messages, and docs — is written in English, always. The only thing that is localized is the end-user UI, through a typed i18n system (`apps/web/lib/i18n`): English (default), Spanish and Brazilian Portuguese for now. Never introduce non-English in code or docs; put user-facing copy behind i18n keys instead. (The system prompt sent to the LLM in `apps/api/app/services/knowledge.py` is a deliberate exception, kept in the customer's language.)
 
 ## Repo hygiene
 

@@ -72,6 +72,13 @@ def test_a_summary_is_written_on_request_billed_and_reused(authenticated_client:
     authenticated_client.post(path, json={"language": "en"})
     assert completion.await_count == 2 and "English" in completion.await_args.args[4][0]["content"]
 
+    # A Portuguese interface gets its summary in Brazilian Portuguese.
+    with TestingSession() as db:
+        db.add(Message(conversation_id=conversation_id, role="user", content="E em cinza?"))
+        db.commit()
+    authenticated_client.post(path, json={"language": "pt"})
+    assert completion.await_count == 3 and "Brazilian Portuguese" in completion.await_args.args[4][0]["content"]
+
     today = date.today()
     report = authenticated_client.get(f"/api/reports/replies?from={today - timedelta(days=1)}&to={today + timedelta(days=1)}").json()
     assert {item["purpose"] for item in report["items"]} == {"summary"}

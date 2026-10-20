@@ -103,4 +103,56 @@ const es: typeof en = {
   },
 };
 
-export const playground = { en, es };
+const pt: typeof en = {
+  selectors: {
+    client: "Cliente",
+    agent: "Agente",
+    agentPlaceholder: "Selecione um agente",
+  },
+  conversations: {
+    heading: "Conversas",
+    new: "Nova conversa",
+    empty: "Ainda não há conversas.",
+    delete: "Excluir conversa",
+    confirmDelete: "Esta conversa de teste e as mensagens dela serão excluídas. Não dá para desfazer.",
+    deleteConfirm: "Excluir",
+    cancel: "Cancelar",
+  },
+  chat: {
+    modelConfigured: "Modelo configurado",
+    noModelConfigured: "Nenhum modelo configurado",
+    fallbackTitle: "Simulador",
+    fallbackSubtitle: "Selecione um agente para começar",
+    modeHuman: "Atendimento humano",
+    modeAi: "Agente de IA",
+  },
+  empty: {
+    title: "Selecione um agente",
+    description: "Escolha um cliente e um agente para ver as conversas deles.",
+  },
+  welcome: {
+    title: "Teste {name}",
+    description: "Faça uma pergunta para conferir as instruções, o tom e o conhecimento dele.",
+    noModelAlert:
+      "Este agente ainda não tem um modelo configurado. Atribua uma conexão nos detalhes dele antes de enviar mensagens.",
+  },
+  notReady: {
+    keyPrefix: "Este agente ainda não pode responder porque falta a sua chave de API. Adicione em ",
+    settingsLink: "Configurações",
+    modelPrefix: "Este agente ainda não pode responder porque não tem modelo. Escolha um na ",
+    modelLink: "configuração do agente",
+  },
+  message: {
+    you: "Você",
+    sourcesUsed: "Fontes usadas",
+  },
+  composer: {
+    placeholder: "Escreva uma mensagem…",
+    placeholderNoAgent: "Selecione um agente",
+    send: "Enviar",
+    attachImage: "Anexar uma imagem",
+    disclaimer: "As respostas vêm do provedor configurado e podem conter erros.",
+  },
+};
+
+export const playground = { en, es, pt };

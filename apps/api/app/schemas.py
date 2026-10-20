@@ -497,7 +497,7 @@ class ConversationSummaryOut(BaseModel):
 
 class ConversationSummaryRequest(BaseModel):
     # The language the summary is written in: the reader's interface language.
-    language: Literal["es", "en"] = "es"
+    language: Literal["es", "en", "pt"] = "es"
 
 
 class ConversationDetail(ConversationOut):

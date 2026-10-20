@@ -1,5 +1,5 @@
 // English dictionary (source of truth), composed from per-area modules under
-// ./dicts. `es.ts` mirrors this exact shape. Access with dotted paths, e.g.
+// ./dicts. `es.ts` and `pt.ts` mirror this exact shape. Access with dotted paths, e.g.
 // t("nav.clients"), t("clients.list.title").
 import { core } from "./dicts/core";
 import { home } from "./dicts/home";

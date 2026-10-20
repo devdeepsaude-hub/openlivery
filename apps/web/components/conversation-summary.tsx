@@ -44,7 +44,7 @@ export function ConversationSummary({ slug, conversationId, requested }: { slug:
 
   async function write() {
     setBusy(true); setError(""); setHidden(false); setOpen(true);
-    try { setData(await api<Summary>(path, { method: "POST", body: JSON.stringify({ language: lang === "en" ? "en" : "es" }) })); }
+    try { setData(await api<Summary>(path, { method: "POST", body: JSON.stringify({ language: lang }) })); }
     catch (err) { setError(messageFrom(err)); }
     finally { setBusy(false); }
   }

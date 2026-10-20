@@ -113,4 +113,61 @@ const es: typeof en = {
   },
 };
 
-export const home = { en, es };
+const pt: typeof en = {
+  head: {
+    eyebrow: "Visão geral da agência",
+    title: "Olá 👋",
+    description: "Tudo o que está acontecendo com seus clientes e agentes, em um só lugar.",
+  },
+  nextSteps: {
+    title: "Primeiros passos",
+    subtitle: "Prepare seu espaço de trabalho para começar a conversar",
+    step1Title: "Crie um cliente",
+    step1Desc: "Adicione o contexto do negócio dele.",
+    step2Title: "Configure um agente",
+    step2Desc: "Defina instruções e personalidade.",
+    step3Title: "Conecte seu modelo",
+    step3Desc: "Use sua própria chave de API.",
+    dismiss: "Ocultar",
+  },
+  metrics: {
+    clients: "Clientes",
+    clientsActive: "{count} ativos",
+    agents: "Agentes",
+    agentsActive: "{count} ativos",
+    conversations: "Conversas",
+    conversationsCaption: "históricos salvos",
+    channels: "Canais",
+    channelsConnected: "{count} conectados",
+  },
+  range: { days: "Últimos {count} dias" },
+  activity: {
+    title: "Atividade",
+    subtitle: "Novas conversas · últimos {count} dias",
+    messages: "Mensagens",
+    humanHandled: "Atendidas por uma pessoa",
+    empty: "Ainda não há atividade neste período.",
+  },
+  topAgents: {
+    title: "Principais agentes",
+    subtitle: "Por conversas",
+    conversations: "{count} conv.",
+    empty: "Ainda não há conversas.",
+  },
+  usage: {
+    title: "Uso de tokens",
+    subtitle: "Por modelo",
+    in: "entrada",
+    out: "saída",
+    empty: "Nenhum uso registrado ainda.",
+  },
+  recentAgents: {
+    title: "Agentes recentes",
+    subtitle: "As configurações mais recentes da sua equipe",
+    viewAll: "Ver todos",
+    emptyTitle: "Ainda não há agentes",
+    emptyDesc: "Adicione pelo espaço de trabalho de cada cliente.",
+  },
+};
+
+export const home = { en, es, pt };

@@ -37,7 +37,7 @@ export function PeriodControl({ value, presets, onChange, custom, onCustom, max 
   max: string;
 }) {
   const { t, lang } = useLanguage();
-  const locale = lang === "es" ? "es" : "en";
+  const locale = lang === "pt" ? "pt-BR" : lang;
   const [open, setOpen] = useState(false);
   return <>
     <FilterSelect label={t("reports.explorer.period")} value={value} onChange={(v) => { if (v === "custom") setOpen(true); else onChange(v); }}>

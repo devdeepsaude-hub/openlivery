@@ -1,7 +1,7 @@
 "use client";
 
 import { useLanguage } from "@/lib/i18n";
-import { useIndustries } from "@/lib/industries";
+import { industryLabel, useIndustries } from "@/lib/industries";
 import { AiHint } from "@/components/ai-hint";
 
 export type IndustryValue = { industry: string; businessType: string; custom: string };
@@ -36,13 +36,13 @@ export function IndustryPicker({ value, onChange, autoFocus }: Props) {
       <label><span className="label-row">{t("clients.industry.label")} <AiHint text={t("aiContext.industry")} /></span>
         <select value={value.industry} required autoFocus={autoFocus} onChange={(e) => onChange({ industry: e.target.value, businessType: e.target.value === "other" ? "other" : "", custom: "" })}>
           <option value="">{t("clients.industry.pick")}</option>
-          {catalog.map((item) => <option key={item.code} value={item.code}>{item.label[lang]}</option>)}
+          {catalog.map((item) => <option key={item.code} value={item.code}>{industryLabel(item.label, lang)}</option>)}
         </select>
       </label>
       {industryIsOther ? words : <label><span className="label-row">{t("clients.industry.typeLabel")} <AiHint text={t("aiContext.businessType")} /></span>
         <select value={value.businessType} required disabled={!sector} onChange={(e) => onChange({ ...value, businessType: e.target.value, custom: "" })}>
           <option value="">{sector ? t("clients.industry.typePick") : t("clients.industry.typeFirst")}</option>
-          {sector?.types.map((item) => <option key={item.code} value={item.code}>{item.label[lang]}</option>)}
+          {sector?.types.map((item) => <option key={item.code} value={item.code}>{industryLabel(item.label, lang)}</option>)}
         </select>
       </label>}
     </div>

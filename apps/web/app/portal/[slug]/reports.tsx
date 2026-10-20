@@ -48,7 +48,7 @@ function formatSeconds(value: number | null, none: string): string {
 export function ReportsView({ slug, section: initialSection, onSection, openConversation }: { slug: string; section?: "summary" | "conversations"; onSection?: (section: "summary" | "conversations") => void; openConversation?: (row: ConversationReportRow) => void }) {
   const t = useT();
   const { lang } = useLanguage();
-  const locale = lang === "es" ? "es" : "en";
+  const locale = lang === "pt" ? "pt-BR" : lang;
   const [section, setSectionState] = useState<"summary" | "conversations">(initialSection ?? "summary");
   const setSection = (next: "summary" | "conversations") => { setSectionState(next); onSection?.(next); };
   const [range, setRange] = useState<number | "custom">(7);

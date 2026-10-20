@@ -3,11 +3,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 import { en } from "./en";
 import { es } from "./es";
+import { pt } from "./pt";
 import type { Dictionary } from "./en";
 
-export type Lang = "en" | "es";
+export type Lang = "en" | "es" | "pt";
 
-const dictionaries = { en, es };
+const dictionaries = { en, es, pt };
 const DEFAULT_LANG: Lang = "en";
 const STORAGE_KEY = "openlivery.lang";
 
@@ -48,7 +49,7 @@ function lookup(lang: Lang, key: string): string {
 }
 
 // First visit, nothing chosen yet: follow the browser. The first preferred
-// language we ship wins, in any regional form (es-MX, en-GB); anything else
+// language we ship wins, in any regional form (es-MX, en-GB, pt-PT); anything else
 // falls back to the default. Nothing is stored, so a browser that changes its
 // language is followed until the user picks one with the switcher.
 function detectBrowserLang(): Lang {
@@ -56,17 +57,17 @@ function detectBrowserLang(): Lang {
   const preferred = navigator.languages?.length ? navigator.languages : [navigator.language];
   for (const tag of preferred) {
     const base = (tag || "").toLowerCase().split("-")[0];
-    if (base === "es" || base === "en") return base;
+    if (base === "es" || base === "en" || base === "pt") return base;
   }
   return DEFAULT_LANG;
 }
 
 function readStoredLang(): Lang {
   if (typeof document === "undefined") return DEFAULT_LANG;
-  const match = document.cookie.match(/(?:^|;\s*)openlivery\.lang=(en|es)/);
+  const match = document.cookie.match(/(?:^|;\s*)openlivery\.lang=(en|es|pt)/);
   if (match) return match[1] as Lang;
   const stored = window.localStorage.getItem(STORAGE_KEY);
-  if (stored === "es" || stored === "en") return stored;
+  if (stored === "es" || stored === "en" || stored === "pt") return stored;
   return detectBrowserLang();
 }
 

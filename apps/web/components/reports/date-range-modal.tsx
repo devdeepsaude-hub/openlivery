@@ -37,7 +37,7 @@ export function DateRangeModal({ open, from, to, max, onApply, onClose }: {
   open: boolean; from: string; to: string; max: string; onApply: (from: string, to: string) => void; onClose: () => void;
 }) {
   const { t, lang } = useLanguage();
-  const locale = lang === "es" ? "es" : "en";
+  const locale = lang === "pt" ? "pt-BR" : lang;
   const today = max || localISO(new Date());
   const [start, setStart] = useState(from);
   const [end, setEnd] = useState<string | null>(to);

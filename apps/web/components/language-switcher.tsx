@@ -3,7 +3,7 @@
 import { Languages } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 
-// Language preference row in the sidebar footers: label on the left, EN/ES
+// Language preference row in the sidebar footers: label on the left, EN/ES/PT
 // segmented control on the right. Shares its layout with the theme switcher.
 export function LanguageSwitcher() {
   const { lang, setLang, t } = useLanguage();
@@ -13,6 +13,7 @@ export function LanguageSwitcher() {
       <div role="group" aria-label={t("shell.language")}>
         <button type="button" className={lang === "en" ? "active" : ""} onClick={() => setLang("en")} aria-pressed={lang === "en"}>EN</button>
         <button type="button" className={lang === "es" ? "active" : ""} onClick={() => setLang("es")} aria-pressed={lang === "es"}>ES</button>
+        <button type="button" className={lang === "pt" ? "active" : ""} onClick={() => setLang("pt")} aria-pressed={lang === "pt"}>PT</button>
       </div>
     </div>
   );

@@ -26,7 +26,7 @@ from .usage import record_usage, schedule_generation_reconcile
 # The newest messages the summary reads, and how much of each.
 MAX_MESSAGES = 300
 MAX_MESSAGE_CHARS = 1500
-LANGUAGES = {"es": "Spanish", "en": "English"}
+LANGUAGES = {"es": "Spanish", "en": "English", "pt": "Brazilian Portuguese"}
 
 SYSTEM_PROMPT = """You summarize a customer service conversation for the team that handles it. Write {language}.
 Return 3 to 6 short bullet lines, each starting with "- ", and nothing else:
