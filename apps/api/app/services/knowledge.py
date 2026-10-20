@@ -405,6 +405,7 @@ def llm_turns(messages, lang: str | None = None) -> list[dict]:
     people talking to one customer.
     """
     label = _HUMAN_TURN[lang if lang in _HUMAN_TURN else "es"]
+    tool_note = _TOOL_NOTE[lang if lang in _TOOL_NOTE else "es"]
     items = list(messages)
     # Where the business spoke last. If a person wrote that turn, the reminder
     # travels with it: a rule in the system prompt sits thousands of characters
@@ -415,8 +416,36 @@ def llm_turns(messages, lang: str | None = None) -> list[dict]:
         content = llm_text(item)
         if item.role == "assistant" and item.sender_type == "human":
             content = f"{label['last' if index == spoke_last else 'short']} {content}"
+        calls = getattr(item, "tool_calls", None) if item.role == "assistant" else None
+        if calls:
+            content = f"{_tool_summary(calls, tool_note)}\n{content}"
         turns.append({"role": item.role, "content": content})
     return turns
+
+
+# What the tools returned in an earlier reply, carried in the history. Only the
+# reply text is stored as the turn, so without this the agent forgets what it
+# looked up or did (a booking it made, the slots it saw) and repeats or
+# contradicts it a message later.
+_TOOL_NOTE = {
+    "es": {"intro": "[Nota interna, no la repitas al cliente: herramientas usadas antes de esta respuesta]", "failed": "falló"},
+    "en": {"intro": "[Internal note, do not repeat it to the customer: tools used before this reply]", "failed": "failed"},
+    "pt": {"intro": "[Nota interna, não repita para o cliente: ferramentas usadas antes desta resposta]", "failed": "falhou"},
+}
+_TOOL_NOTE_RESULT_CHARS = 300
+
+
+def _tool_summary(calls: list, note: dict) -> str:
+    lines = [note["intro"]]
+    for call in calls:
+        if not isinstance(call, dict):
+            continue
+        args = call.get("arguments") or {}
+        shown_args = ", ".join(f"{key}={value}" for key, value in args.items()) if isinstance(args, dict) else str(args)
+        result = str(call.get("result_preview") or "").replace("\n", " ")[:_TOOL_NOTE_RESULT_CHARS]
+        status = f" ({note['failed']})" if call.get("is_error") else ""
+        lines.append(f"- {call.get('name')}({shown_args}){status} -> {result}")
+    return "\n".join(lines)
 
 
 def _section(title: str, body: str, level: int = 2) -> str:
