@@ -8,6 +8,7 @@ taken over. The caller is responsible for actually delivering the reply.
 
 import asyncio
 import random
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -19,6 +20,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..database import new_session
 from .contacts import display_name, phone_from_chat_id, previous_conversation_recap, rename_conversations, resolve_contact
 from .conversation_state import exchanged_only, note_inbound, note_reply
+from ..config import get_settings
 from ..models import Agent, Conversation, Message, MessageAttachment, now_utc
 from .attachments import llm_text, store_attachment
 from .knowledge import contact_context, build_system_prompt, llm_turns, retrieve_knowledge
@@ -630,6 +632,34 @@ async def send_reply_attachments(db: Session, conversation: Conversation, messag
 _pending_replies: dict[uuid.UUID, "asyncio.Task[None]"] = {}
 
 
+# WhatsApp drops "typing..." after a few seconds unless it is sent again.
+_TYPING_REFRESH_SECONDS = 8.0
+
+
+def typing_pause_seconds(reply: str, already_waited: float) -> float:
+    """How much longer to show "typing..." before a reply goes out, so a long
+    answer does not land a second after the short wait: the time a person
+    would take to type it (``TYPING_CHARS_PER_SECOND``, capped at
+    ``TYPING_MAX_SECONDS``) minus what generating it already took. Zero when
+    the setting is off."""
+    settings = get_settings()
+    pace = float(settings.typing_chars_per_second or 0)
+    if pace <= 0:
+        return 0.0
+    wanted = min(len(reply) / pace, float(settings.typing_max_seconds))
+    return max(0.0, wanted - already_waited)
+
+
+async def _keep_typing(db: Session, conversation: Conversation, read_ids: list[str], seconds: float) -> None:
+    """Hold the reply for ``seconds`` with "typing..." showing the whole time."""
+    while seconds > 0:
+        step = min(seconds, _TYPING_REFRESH_SECONDS)
+        await asyncio.sleep(step)
+        seconds -= step
+        if seconds > 0:
+            await _signal_read_and_typing(db, conversation, read_ids)
+
+
 def reply_delay_seconds(agent: Agent) -> float:
     """How long to wait before answering, drawn between the agent's bounds.
 
@@ -699,7 +729,9 @@ async def _debounced_reply(conversation_id: uuid.UUID, delay: float) -> None:
             if item.external_message_id:
                 burst_external_ids.append(item.external_message_id)
         # The loop walks newest-first; read receipts go oldest-first.
-        await _signal_read_and_typing(db, conversation, list(reversed(burst_external_ids)))
+        read_ids = list(reversed(burst_external_ids))
+        await _signal_read_and_typing(db, conversation, read_ids)
+        started = time.monotonic()
         try:
             result = await _reply_with_ai(db, channel, conversation, "\n".join(reversed(burst)), expected_last_message_id=last.id)
         except Exception as exc:
@@ -711,6 +743,7 @@ async def _debounced_reply(conversation_id: uuid.UUID, delay: float) -> None:
             # A tool may have produced a file with no accompanying text.
             await send_reply_attachments(db, conversation, result.attachment_message_ids)
             return
+        await _keep_typing(db, conversation, read_ids, typing_pause_seconds(result.reply, time.monotonic() - started))
         try:
             external_id = await send_channel_message(
                 db, conversation, result.reply, quoted_external_id=result.quote_external_id

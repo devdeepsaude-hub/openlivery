@@ -177,3 +177,18 @@ def test_agent_delay_bounds_are_validated(authenticated_client: TestClient):
     assert updated.status_code == 200, updated.text
     assert (updated.json()["reply_delay_min_seconds"], updated.json()["reply_delay_max_seconds"]) == (2, 4)
     assert client.patch(f"/api/agents/{agent_id}", json={"reply_delay_min_seconds": 0, "reply_delay_max_seconds": 0}).status_code == 200
+
+
+def test_typing_pause_follows_reply_length(monkeypatch):
+    from app.config import get_settings
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "typing_chars_per_second", 0)
+    assert inbound_service.typing_pause_seconds("x" * 200, 0) == 0.0
+    monkeypatch.setattr(settings, "typing_chars_per_second", 20)
+    monkeypatch.setattr(settings, "typing_max_seconds", 15)
+    # 200 characters at 20/s is 10s, minus the 4s generating it took.
+    assert inbound_service.typing_pause_seconds("x" * 200, 4) == 6.0
+    # A long reply is capped, and a slow generation leaves nothing to wait.
+    assert inbound_service.typing_pause_seconds("x" * 2000, 0) == 15.0
+    assert inbound_service.typing_pause_seconds("x" * 100, 30) == 0.0
