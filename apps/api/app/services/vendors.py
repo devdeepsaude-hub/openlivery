@@ -26,6 +26,8 @@ from urllib.parse import urlsplit
 import httpx
 from fastapi import HTTPException
 
+from ..config import get_settings
+
 logger = logging.getLogger(__name__)
 
 ANTHROPIC_VERSION = "2023-06-01"
@@ -47,9 +49,17 @@ MODELS_RETRY = 300.0
 _models_cache: dict[tuple[str, str], tuple[float, list[str]]] = {}
 
 # Gemini model families that are not chat models, kept out of the chat offer.
-_GEMINI_NON_CHAT = ("embedding", "tts", "image", "live", "audio", "aqa", "veo", "imagen", "robotics", "computer-use")
+_GEMINI_NON_CHAT = ("embedding", "tts", "image", "live", "audio", "aqa", "veo", "imagen", "robotics", "computer-use", "banana", "transcribe")
 
 _DATE_SUFFIX = re.compile(r"-(\d{8}|\d{2}-\d{2}|\d{4})$")
+
+
+class ProviderError(HTTPException):
+    """The provider answered with an error; ``upstream_status`` is its HTTP status."""
+
+    def __init__(self, upstream_status: int, detail: str):
+        super().__init__(status_code=502, detail=detail)
+        self.upstream_status = upstream_status
 
 
 def vendor_for_base_url(base_url: str) -> str | None:
@@ -108,6 +118,36 @@ def is_chat_model(vendor: str, native: str) -> bool:
 
 def is_embedding_model(vendor: str, native: str) -> bool:
     return vendor == "google" and "embedding" in native.lower()
+
+
+def _models_setting(raw: str) -> list[str]:
+    return [model.strip() for model in (raw or "").split(",") if model.strip()]
+
+
+def fallback_models(base_url: str, model: str) -> list[str]:
+    """The chat models to try, in order, when ``model`` fails at a direct
+    vendor: the configured fallbacks of that same vendor (same key)."""
+    vendor = vendor_for_base_url(base_url)
+    if not vendor:
+        return []
+    return [m for m in _models_setting(get_settings().model_fallbacks) if m != model and slug_vendor(m) == vendor]
+
+
+def transcription_fallbacks(model: str) -> list[str]:
+    """The Gemini transcription models to try after ``model``."""
+    return [m for m in _models_setting(get_settings().transcription_models) if m != model and slug_vendor(m) == "google"]
+
+
+# Upstream answers worth asking another model for: the model was withdrawn,
+# the key is rate limited, or the vendor is overloaded or failing.
+FALLBACK_STATUSES = frozenset({404, 408, 429, 500, 502, 503, 504})
+
+
+def should_fall_over(exc: Exception) -> bool:
+    if isinstance(exc, ProviderError):
+        return exc.upstream_status in FALLBACK_STATUSES
+    # Timeouts and dropped connections.
+    return isinstance(exc, httpx.TransportError)
 
 
 def _key_fingerprint(api_key: str) -> str:
@@ -178,6 +218,13 @@ async def adapt_chat(base_url: str, api_key: str, payload: dict, sampling: dict)
     payload = {key: value for key, value in payload.items() if key != "usage"}
     payload["model"] = await wire_model(base_url, api_key, payload["model"])
     sampling = dict(sampling)
+    effort = get_settings().gemini_reasoning_effort
+    if vendor == "google" and effort:
+        # Gemini 3 thinks before answering and counts it against max_tokens,
+        # which cuts short replies mid-sentence; a minimal effort keeps chat
+        # replies whole and quick. In sampling, so a model that refuses it is
+        # asked again without it.
+        sampling.setdefault("reasoning_effort", effort)
     if vendor == "anthropic":
         # Current Claude models reject any temperature below 1 on this endpoint;
         # leaving it out keeps the model's own default.
@@ -196,7 +243,24 @@ def _without_strict(tool: dict) -> dict:
 async def transcribe_with_gemini(api_key: str, model: str, audio: bytes, content_type: str) -> dict:
     """Transcribe audio with Gemini's native API, which takes WhatsApp's ogg
     voice notes as they are (the OpenAI-compatible endpoint has no
-    transcription route). Returns ``{"text", "input_tokens", "output_tokens"}``."""
+    transcription route). A model that fails for a passing reason hands over
+    to the next Gemini model in ``TRANSCRIPTION_MODELS``. Returns
+    ``{"text", "input_tokens", "output_tokens"}``."""
+    candidates = [model, *transcription_fallbacks(model)]
+    for index, candidate in enumerate(candidates):
+        last = index == len(candidates) - 1
+        try:
+            return await _gemini_transcription(api_key, candidate, audio, content_type, 120 if last else get_settings().model_attempt_timeout)
+        except (ProviderError, httpx.TransportError) as exc:
+            if last or not should_fall_over(exc):
+                if isinstance(exc, httpx.TransportError):
+                    raise HTTPException(status_code=502, detail="Could not reach the transcription provider.") from exc
+                raise
+            logger.warning("Transcription with %s failed (%s); falling over to %s", candidate, getattr(exc, "detail", type(exc).__name__), candidates[index + 1])
+    raise AssertionError("unreachable")
+
+
+async def _gemini_transcription(api_key: str, model: str, audio: bytes, content_type: str, timeout: float) -> dict:
     natives = await vendor_models("google", f"{GEMINI_NATIVE_BASE}/openai", api_key)
     name = slug_name(model) if slug_vendor(model) == "google" else model
     native = match_model(name, natives) or name
@@ -211,13 +275,10 @@ async def transcribe_with_gemini(api_key: str, model: str, audio: bytes, content
         }],
     }
     url = f"{GEMINI_NATIVE_BASE}/models/{native}:generateContent"
-    try:
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(url, headers={"x-goog-api-key": api_key}, json=body)
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail="Could not reach the transcription provider.") from exc
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.post(url, headers={"x-goog-api-key": api_key}, json=body)
     if response.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"Transcription failed: {safe_error(response)}")
+        raise ProviderError(response.status_code, f"Transcription failed: {safe_error(response)}")
     try:
         data = response.json()
         parts = ((data.get("candidates") or [{}])[0].get("content") or {}).get("parts") or []
@@ -225,10 +286,19 @@ async def transcribe_with_gemini(api_key: str, model: str, audio: bytes, content
         raise HTTPException(status_code=502, detail="Invalid transcription response.") from exc
     usage = data.get("usageMetadata") or {}
     return {
-        "text": "".join(str(part.get("text") or "") for part in parts if isinstance(part, dict)).strip(),
+        "text": "".join(_part_text(part) for part in parts if isinstance(part, dict)).strip(),
         "input_tokens": int(usage.get("promptTokenCount") or 0),
         "output_tokens": int(usage.get("candidatesTokenCount") or 0),
     }
+
+
+def _part_text(part: dict) -> str:
+    """A part's text: plain text from a chat model, ``audioTranscription``
+    from Gemini's dedicated transcription models."""
+    transcription = part.get("audioTranscription")
+    if isinstance(transcription, dict):
+        return str(transcription.get("text") or "")
+    return str(part.get("text") or "")
 
 
 async def test_key(vendor: str, base_url: str, api_key: str) -> dict:
@@ -246,6 +316,9 @@ async def test_key(vendor: str, base_url: str, api_key: str) -> dict:
 def safe_error(response: httpx.Response) -> str:
     try:
         data = response.json()
+        # Gemini wraps its error in a one-item list.
+        if isinstance(data, list) and data:
+            data = data[0]
         error = data.get("error") if isinstance(data, dict) else None
         message = (error.get("message") if isinstance(error, dict) else None) or (data.get("message") if isinstance(data, dict) else None)
         if isinstance(message, str):

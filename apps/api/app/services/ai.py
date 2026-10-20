@@ -7,11 +7,14 @@ the cost of the call, so a reply knows what it cost without a price table.
 
 import logging
 from dataclasses import dataclass, field
+from functools import partial
 
 import httpx
 from fastapi import HTTPException
 
+from ..config import get_settings
 from . import vendors
+from .vendors import ProviderError
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +74,7 @@ class Completion:
 # Substrings in a provider's 400 error that mean a sampling parameter is not
 # accepted (e.g. reasoning models that refuse temperature). When seen, we retry
 # once without those params.
-_SAMPLING_PARAM_HINTS = ("temperature", "max_tokens", "max_output_tokens", "max_completion_tokens", "unsupported", "not supported")
+_SAMPLING_PARAM_HINTS = ("temperature", "max_tokens", "max_output_tokens", "max_completion_tokens", "reasoning", "unsupported", "not supported")
 
 
 async def chat_completion(
@@ -125,9 +128,33 @@ async def _chat_completions(base_url, api_key, model, messages, temperature, max
         # carries the real charge instead of waiting on a reconcile.
         "usage": {"include": True},
     }
-    payload, sampling = await vendors.adapt_chat(base_url, api_key, payload, sampling_params(temperature, max_tokens))
-    data = await post_completion(chat_url(base_url), auth_headers(api_key), payload, sampling)
+    data = await send_chat(base_url, api_key, payload, sampling_params(temperature, max_tokens))
     return completion_from(extract_chat_text(data), read_usage(data), data)
+
+
+async def send_chat(base_url: str, api_key: str, payload: dict, sampling: dict, post=None) -> dict:
+    """Send a chat completion request fitted to the vendor it goes to.
+
+    A direct vendor that fails for a passing reason is asked again with the
+    next fallback model configured for it (``MODEL_FALLBACKS``); while one is
+    left, an attempt gets ``MODEL_ATTEMPT_TIMEOUT`` instead of the usual wait.
+    ``post`` lets a caller route through its own transport (the tool loop
+    passes the one its tests stub).
+    """
+    candidates = [payload["model"], *vendors.fallback_models(base_url, payload["model"])]
+    for index, model in enumerate(candidates):
+        last = index == len(candidates) - 1
+        sender = post or _post_json
+        if not last and sender is _REAL_POST_JSON:
+            sender = partial(_REAL_POST_JSON, timeout=get_settings().model_attempt_timeout)
+        wire, wire_sampling = await vendors.adapt_chat(base_url, api_key, {**payload, "model": model}, sampling)
+        try:
+            return await post_completion(chat_url(base_url), auth_headers(api_key), wire, wire_sampling, post=sender)
+        except (ProviderError, httpx.TransportError) as exc:
+            if last or not vendors.should_fall_over(exc):
+                raise
+            logger.warning("Model %s failed (%s); falling over to %s", model, getattr(exc, "detail", type(exc).__name__), candidates[index + 1])
+    raise AssertionError("unreachable")
 
 
 def is_synthetic_reply(data: dict) -> bool:
@@ -219,14 +246,18 @@ def read_usage(data: dict) -> Usage:
     )
 
 
-async def _post_json(url: str, headers: dict, base_payload: dict, sampling: dict) -> dict:
-    async with httpx.AsyncClient(timeout=90) as client:
+async def _post_json(url: str, headers: dict, base_payload: dict, sampling: dict, timeout: float = 90) -> dict:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(url, headers=headers, json={**base_payload, **sampling})
         if sampling and response.status_code >= 400 and _is_sampling_param_error(response):
             response = await client.post(url, headers=headers, json=base_payload)
     if response.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"The AI provider responded with an error: {_safe_provider_error(response)}")
+        raise ProviderError(response.status_code, f"The AI provider responded with an error: {_safe_provider_error(response)}")
     return response.json()
+
+
+# The transport itself, kept apart from the module attribute tests replace.
+_REAL_POST_JSON = _post_json
 
 
 def chat_message(data: dict) -> dict:
@@ -256,14 +287,7 @@ def _is_sampling_param_error(response: httpx.Response) -> bool:
 
 
 def _safe_provider_error(response: httpx.Response) -> str:
-    try:
-        data = response.json()
-        message = data.get("error", {}).get("message") or data.get("message")
-        if isinstance(message, str):
-            return message[:500]
-    except ValueError:
-        pass
-    return f"HTTP {response.status_code}"
+    return vendors.safe_error(response)
 
 
 async def test_provider(provider: str, base_url: str, api_key: str) -> dict:

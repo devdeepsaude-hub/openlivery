@@ -171,3 +171,110 @@ def test_vendors_without_audio_refuse_to_transcribe():
     with pytest.raises(Exception) as excinfo:
         asyncio.run(media.transcribe_audio("https://api.deepseek.com", "sk-ds", "deepseek/deepseek-flash", b"ogg"))
     assert "does not transcribe" in str(getattr(excinfo.value, "detail", excinfo.value))
+
+
+def _fallbacks(monkeypatch, chat: str = "", transcription: str | None = None):
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "model_fallbacks", chat)
+    if transcription is not None:
+        monkeypatch.setattr(get_settings(), "transcription_models", transcription)
+
+
+def test_an_overloaded_model_hands_over_to_the_next_fallback(monkeypatch):
+    from app.services import ai
+
+    _fallbacks(monkeypatch, "google/gemini-3.8-flash, google/gemini-3.6-flash, anthropic/claude-sonnet-5")
+    asked: list[str] = []
+
+    async def _post(url, headers, payload, sampling, timeout=90):
+        asked.append(payload["model"])
+        if payload["model"] == "gemini-3.8-flash":
+            raise ai.ProviderError(503, "This model is currently experiencing high demand.")
+        return {"choices": [{"message": {"content": "Ola!"}}], "usage": {"prompt_tokens": 5, "completion_tokens": 2}}
+
+    monkeypatch.setattr(ai, "_post_json", _post)
+    completion = asyncio.run(ai.chat_completion(
+        "google", "https://generativelanguage.googleapis.com/v1beta/openai", "AIza-test", "google/gemini-3.8-flash",
+        [{"role": "user", "content": "oi"}],
+    ))
+    assert completion.text == "Ola!"
+    # Another vendor's model is never tried with this vendor's key.
+    assert asked == ["gemini-3.8-flash", "gemini-3.6-flash"]
+
+
+def test_a_rejected_request_does_not_fall_over(monkeypatch):
+    from fastapi import HTTPException
+
+    from app.services import ai
+
+    _fallbacks(monkeypatch, "google/gemini-3.6-flash")
+    asked: list[str] = []
+
+    async def _post(url, headers, payload, sampling, timeout=90):
+        asked.append(payload["model"])
+        raise ai.ProviderError(400, "Invalid JSON payload received.")
+
+    monkeypatch.setattr(ai, "_post_json", _post)
+    with pytest.raises(HTTPException):
+        asyncio.run(ai.chat_completion(
+            "google", "https://generativelanguage.googleapis.com/v1beta/openai", "AIza-test", "google/gemini-3.8-flash",
+            [{"role": "user", "content": "oi"}],
+        ))
+    assert asked == ["gemini-3.8-flash"]
+
+
+def test_openrouter_calls_never_fall_over(monkeypatch):
+    from app.services import ai
+
+    _fallbacks(monkeypatch, "openai/gpt-4.1")
+    assert vendors.fallback_models("https://openrouter.ai/api/v1", "openai/gpt-5.6-luna") == []
+
+
+class _BusyThenTranscribing:
+    urls: list[str] = []
+
+    def __init__(self, timeout):
+        self.timeout = timeout
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+    async def post(self, url, headers, json):
+        _BusyThenTranscribing.urls.append(url)
+
+        class _Response:
+            def __init__(self, status_code, payload):
+                self.status_code, self._payload = status_code, payload
+
+            def json(self):
+                return self._payload
+
+        if "gemini-3.6-flash" in url:
+            return _Response(503, [{"error": {"code": 503, "message": "high demand"}}])
+        # Gemini's dedicated transcription model answers in audioTranscription.
+        return _Response(200, {"candidates": [{"content": {"parts": [{"audioTranscription": {"text": "Olá, quero marcar."}}]}}]})
+
+
+def test_transcription_hands_over_to_the_next_gemini_model(monkeypatch):
+    _fallbacks(monkeypatch, transcription="google/gemini-3.6-flash,google/gemini-3.5-transcribe")
+    _BusyThenTranscribing.urls = []
+    monkeypatch.setattr(vendors.httpx, "AsyncClient", _BusyThenTranscribing)
+    result = asyncio.run(media.transcribe_audio(
+        "https://generativelanguage.googleapis.com/v1beta/openai", "AIza-test", "google/gemini-3.6-flash", b"ogg", "audio.ogg", "audio/ogg",
+    ))
+    assert result.text == "Olá, quero marcar."
+    assert [url.rsplit("/", 1)[1] for url in _BusyThenTranscribing.urls] == [
+        "gemini-3.6-flash:generateContent", "gemini-3.5-transcribe:generateContent",
+    ]
+
+
+def test_gemini_is_asked_for_minimal_reasoning():
+    payload = {"model": "google/gemini-3.8-flash", "messages": []}
+    _, sampling = asyncio.run(vendors.adapt_chat("https://generativelanguage.googleapis.com/v1beta/openai", "key", payload, {"max_tokens": 300}))
+    assert sampling == {"max_tokens": 300, "reasoning_effort": "minimal"}
+    _, sampling = asyncio.run(vendors.adapt_chat("https://api.deepseek.com", "key", {"model": "deepseek/deepseek-flash", "messages": []}, {}))
+    assert "reasoning_effort" not in sampling

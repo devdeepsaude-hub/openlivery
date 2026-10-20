@@ -45,6 +45,8 @@ Ajustes también acepta claves de Anthropic, DeepSeek y Google Gemini. Los agent
 - **Identificadores de modelo.** El slug se compara con los modelos que el proveedor sirve a la clave (`anthropic/claude-haiku-4.5` se envía como `claude-haiku-4-5-20251001`). Sin clave de OpenRouter, los selectores ofrecen solo lo que sirven las claves de proveedor; un modelo que OpenRouter no lista aparece como `proveedor/id`.
 - **Base de conocimiento y audio.** De los tres, solo Gemini sirve embeddings (`google/gemini-embedding-001`) y transcribe audio (con su API nativa, que acepta las notas de voz de WhatsApp tal cual). Define `DEFAULT_EMBEDDING_MODEL`, `DEFAULT_AUDIO_MODEL` y `TRANSCRIPTION_MODELS` en `.env.docker` para que los agentes nuevos empiecen con modelos que tus claves sirven.
 - **Muestreo.** Las peticiones a Anthropic omiten la temperatura: los modelos Claude actuales rechazan valores menores que 1 en ese endpoint.
+- **Modelos de respaldo.** `MODEL_FALLBACKS` lista modelos a probar, en orden, cuando un proveedor directo falla por un motivo pasajero (sobrecarga, límite de uso, tiempo agotado, modelo retirado); solo se prueban modelos del mismo proveedor. Mientras quede un respaldo, cada intento espera como máximo `MODEL_ATTEMPT_TIMEOUT` segundos. La transcripción cambia de modelo igual a lo largo de `TRANSCRIPTION_MODELS`.
+- **Razonamiento de Gemini.** Gemini 3 razona antes de responder y lo descuenta del límite de tokens de la respuesta, lo que puede cortarla; las peticiones piden `GEMINI_REASONING_EFFORT` (`minimal` por defecto).
 - **Costo.** Los proveedores no informan un precio por llamada, así que en Reportes esos registros se valoran al precio de lista del catálogo.
 
 ## Actualizar desde claves de OpenAI y Anthropic

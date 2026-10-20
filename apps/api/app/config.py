@@ -47,6 +47,17 @@ class Settings(BaseSettings):
     # vendors serve (e.g. google/gemini-embedding-001).
     default_audio_model: str = "openai/gpt-4o-mini-transcribe"
     default_embedding_model: str = "openai/text-embedding-3-small"
+    # Models to fall over to, in order, when a direct vendor fails a call for a
+    # passing reason (overloaded, rate limited, timed out, model withdrawn).
+    # Only models of the failing model's vendor are tried, with the same key.
+    # Transcription falls over along TRANSCRIPTION_MODELS the same way.
+    model_fallbacks: str = ""
+    # Seconds one attempt may take while a fallback is still left to try; the
+    # last attempt keeps the usual timeout.
+    model_attempt_timeout: float = 25.0
+    # Reasoning effort sent to Gemini (minimal, low, medium, high); empty
+    # leaves the model's default.
+    gemini_reasoning_effort: str = "minimal"
     # Official messaging APIs. App credentials remain on the server.
     social_graph_version: str = "v25.0"
     social_worker_enabled: bool = True

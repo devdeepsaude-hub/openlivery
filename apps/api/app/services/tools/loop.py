@@ -8,8 +8,7 @@ the loop ends.
 
 import json
 
-from .. import vendors
-from ..ai import Completion, Usage, _post_json, auth_headers, chat_message, chat_url, completion_from, extract_chat_text, post_completion, read_usage, sampling_params
+from ..ai import Completion, Usage, _post_json, chat_message, completion_from, extract_chat_text, read_usage, sampling_params, send_chat
 from ..tool_files import MAX_TOOL_FILES
 from .http_exec import execute_http_tool
 from .mcp_client import call_mcp_tool
@@ -43,8 +42,6 @@ async def tool_loop(
     base_url: str, api_key: str, model: str, messages: list[dict], specs: list[ToolSpec],
     temperature: float | None, max_tokens: int | None,
 ) -> Completion:
-    url = chat_url(base_url)
-    headers = auth_headers(api_key)
     convo: list[dict] = [{"role": m["role"], "content": m["content"]} for m in messages]
     # strict is stated explicitly: some routes treat an omitted value as
     # strict mode, where the model must emit every property in the schema
@@ -66,8 +63,7 @@ async def tool_loop(
             # Cap reached: tools stay in the payload (required when the history
             # contains tool calls) but the model must answer with text.
             payload["tool_choice"] = "none"
-        wire_payload, wire_sampling = await vendors.adapt_chat(base_url, api_key, payload, sampling)
-        data = await post_completion(url, headers, wire_payload, wire_sampling, post=_post_json)
+        data = await send_chat(base_url, api_key, payload, sampling, post=_post_json)
         usage = usage + read_usage(data)
         message = chat_message(data)
         calls = [call for call in (message.get("tool_calls") or []) if call.get("type", "function") == "function"]
