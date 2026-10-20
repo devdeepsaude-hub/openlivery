@@ -207,6 +207,9 @@ def test_a_reply_is_split_into_paragraph_messages(monkeypatch):
         "Oi, Camila!", "A Jéssica tem quinta às 18h.", "Posso reservar?\n\nQualquer coisa, me chama.",
     ]
     assert inbound_service.split_reply("Só uma linha.") == ["Só uma linha."]
+    # Fewer paragraphs than the limit: one message each, never an empty one.
+    monkeypatch.setattr(settings, "reply_max_messages", 4)
+    assert inbound_service.split_reply("Oi!\n\nPosso reservar?") == ["Oi!", "Posso reservar?"]
 
 
 def test_a_burst_reply_goes_out_as_one_message_per_paragraph(authenticated_client: TestClient, monkeypatch):

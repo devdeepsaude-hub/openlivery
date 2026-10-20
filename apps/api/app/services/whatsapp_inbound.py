@@ -644,6 +644,8 @@ def split_reply(reply: str) -> list[str]:
     paragraphs = [part.strip() for part in reply.split("\n\n") if part.strip()]
     if limit <= 1 or len(paragraphs) <= 1:
         return [reply]
+    if len(paragraphs) <= limit:
+        return paragraphs
     head, tail = paragraphs[: limit - 1], paragraphs[limit - 1 :]
     return [*head, "\n\n".join(tail)]
 
