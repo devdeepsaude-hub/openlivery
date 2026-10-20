@@ -244,3 +244,15 @@ def test_a_burst_reply_goes_out_as_one_message_per_paragraph(authenticated_clien
         assert reply.external_message_id == "wamid-1"
     finally:
         db.close()
+
+
+def test_a_list_stays_in_one_message(monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "reply_max_messages", 3)
+    prices = (
+        "Os valores são os seguintes:\n\n✨ Pagamento semanal: R$ 150 por sessão\n\n"
+        "✨ Plano antecipado: R$ 135 por sessão.\n\n_Pagamento via boleto ou cartão no início do mês._"
+    )
+    reply = f"{prices}\n\nQual faz mais sentido pra você?"
+    assert inbound_service.split_reply(reply) == [prices, "Qual faz mais sentido pra você?"]

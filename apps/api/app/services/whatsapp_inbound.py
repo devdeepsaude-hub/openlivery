@@ -636,12 +636,25 @@ _pending_replies: dict[uuid.UUID, "asyncio.Task[None]"] = {}
 _TYPING_REFRESH_SECONDS = 8.0
 
 
+# Paragraphs that continue a list rather than start a new message.
+_LIST_STARTS = ("✨", "-", "•", "*", "_", "1.", "2.", "3.", "4.", "5.")
+
+
 def split_reply(reply: str) -> list[str]:
     """The reply as the WhatsApp messages a person would send: one per
     paragraph, up to ``REPLY_MAX_MESSAGES`` (the rest stays in the last one).
     One message when the setting is 1 or less."""
     limit = int(get_settings().reply_max_messages or 1)
-    paragraphs = [part.strip() for part in reply.split("\n\n") if part.strip()]
+    paragraphs: list[str] = []
+    for part in (part.strip() for part in reply.split("\n\n")):
+        if not part:
+            continue
+        # A list and the line that introduces it are one message, as a
+        # person would paste them: a price table must not arrive in pieces.
+        if paragraphs and (paragraphs[-1].endswith(":") or part.startswith(_LIST_STARTS)):
+            paragraphs[-1] = f"{paragraphs[-1]}\n\n{part}"
+        else:
+            paragraphs.append(part)
     if limit <= 1 or len(paragraphs) <= 1:
         return [reply]
     if len(paragraphs) <= limit:
