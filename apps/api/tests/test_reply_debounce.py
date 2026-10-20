@@ -192,3 +192,52 @@ def test_typing_pause_follows_reply_length(monkeypatch):
     # A long reply is capped, and a slow generation leaves nothing to wait.
     assert inbound_service.typing_pause_seconds("x" * 2000, 0) == 15.0
     assert inbound_service.typing_pause_seconds("x" * 100, 30) == 0.0
+
+
+def test_a_reply_is_split_into_paragraph_messages(monkeypatch):
+    from app.config import get_settings
+
+    settings = get_settings()
+    reply = "Oi, Camila!\n\nA Jéssica tem quinta às 18h.\n\nPosso reservar?\n\nQualquer coisa, me chama."
+    monkeypatch.setattr(settings, "reply_max_messages", 1)
+    assert inbound_service.split_reply(reply) == [reply]
+    monkeypatch.setattr(settings, "reply_max_messages", 3)
+    # Beyond the limit, the rest travels together in the last message.
+    assert inbound_service.split_reply(reply) == [
+        "Oi, Camila!", "A Jéssica tem quinta às 18h.", "Posso reservar?\n\nQualquer coisa, me chama.",
+    ]
+    assert inbound_service.split_reply("Só uma linha.") == ["Só uma linha."]
+
+
+def test_a_burst_reply_goes_out_as_one_message_per_paragraph(authenticated_client: TestClient, monkeypatch):
+    from app.config import get_settings
+
+    _setup_channel(authenticated_client)
+    monkeypatch.setattr(get_settings(), "reply_max_messages", 4)
+    monkeypatch.setattr(inbound_service, "reply_delay_seconds", lambda agent: 0.15)
+    completion = AsyncMock(return_value=Completion(text="Oi!\n\nTenho quinta às 18h.\n\nPosso reservar?"))
+    monkeypatch.setattr(inbound_service, "run_completion", completion)
+    send = AsyncMock(side_effect=["wamid-1", "wamid-2", "wamid-3"])
+    monkeypatch.setattr(inbound_service, "send_channel_message", send)
+    typing = AsyncMock()
+    monkeypatch.setattr(inbound_service, "_signal_read_and_typing", typing)
+
+    db = SessionLocal()
+    try:
+        channel = db.scalar(select(WhatsAppChannel))
+
+        async def scenario():
+            await _process(db, channel, _inbound("wa-1", "tem horário?"))
+            await asyncio.sleep(0.5)
+
+        asyncio.run(scenario())
+
+        assert [call.args[2] for call in send.await_args_list] == ["Oi!", "Tenho quinta às 18h.", "Posso reservar?"]
+        # "typing..." shows before the first message and again before each next one.
+        assert typing.await_count >= 3
+        # The conversation keeps the whole reply as one message, tied to the first one sent.
+        reply = db.scalar(select(Message).where(Message.role == "assistant"))
+        assert reply.content == "Oi!\n\nTenho quinta às 18h.\n\nPosso reservar?"
+        assert reply.external_message_id == "wamid-1"
+    finally:
+        db.close()

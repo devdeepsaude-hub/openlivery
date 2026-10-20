@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     # never longer than TYPING_MAX_SECONDS. Counts on top of the reply delay.
     typing_chars_per_second: float = 0
     typing_max_seconds: float = 20
+    # Debounced WhatsApp replies go out as up to this many messages, one per
+    # paragraph, each after its own "typing..."; 1 sends the reply whole.
+    reply_max_messages: int = 1
     # Official messaging APIs. App credentials remain on the server.
     social_graph_version: str = "v25.0"
     social_worker_enabled: bool = True

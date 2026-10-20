@@ -636,6 +636,18 @@ _pending_replies: dict[uuid.UUID, "asyncio.Task[None]"] = {}
 _TYPING_REFRESH_SECONDS = 8.0
 
 
+def split_reply(reply: str) -> list[str]:
+    """The reply as the WhatsApp messages a person would send: one per
+    paragraph, up to ``REPLY_MAX_MESSAGES`` (the rest stays in the last one).
+    One message when the setting is 1 or less."""
+    limit = int(get_settings().reply_max_messages or 1)
+    paragraphs = [part.strip() for part in reply.split("\n\n") if part.strip()]
+    if limit <= 1 or len(paragraphs) <= 1:
+        return [reply]
+    head, tail = paragraphs[: limit - 1], paragraphs[limit - 1 :]
+    return [*head, "\n\n".join(tail)]
+
+
 def typing_pause_seconds(reply: str, already_waited: float) -> float:
     """How much longer to show "typing..." before a reply goes out, so a long
     answer does not land a second after the short wait: the time a person
@@ -743,11 +755,18 @@ async def _debounced_reply(conversation_id: uuid.UUID, delay: float) -> None:
             # A tool may have produced a file with no accompanying text.
             await send_reply_attachments(db, conversation, result.attachment_message_ids)
             return
-        await _keep_typing(db, conversation, read_ids, typing_pause_seconds(result.reply, time.monotonic() - started))
+        external_id = None
         try:
-            external_id = await send_channel_message(
-                db, conversation, result.reply, quoted_external_id=result.quote_external_id
-            )
+            for index, part in enumerate(split_reply(result.reply)):
+                if index:
+                    # A new message is being written: show it, like a person would.
+                    await _signal_read_and_typing(db, conversation, read_ids)
+                waited = time.monotonic() - started if index == 0 else 0.0
+                await _keep_typing(db, conversation, read_ids, typing_pause_seconds(part, waited))
+                sent = await send_channel_message(
+                    db, conversation, part, quoted_external_id=result.quote_external_id if index == 0 else None
+                )
+                external_id = external_id or sent
         except HTTPException as exc:
             channel.last_error = f"The reply could not be sent: {exc.detail}"
             channel.updated_at = now_utc()
