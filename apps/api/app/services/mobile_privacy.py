@@ -64,17 +64,18 @@ def disclosure(db: Session, client: Client) -> MobilePrivacy:
 
     # An inactive agent may still process media for an existing conversation.
     agents = db.execute(select(
-        Agent.id, Agent.provider, Agent.image_enabled, Agent.audio_enabled,
+        Agent.id, Agent.model, Agent.image_enabled, Agent.image_model, Agent.audio_enabled, Agent.audio_model,
     ).where(Agent.client_id == client.id)).all()
     for agent in agents:
-        name, host = provider_destination(db, client.agency_id, agent.provider)
+        name, host = provider_destination(db, client.agency_id, providers.provider_for_model(db, client.agency_id, agent.model or ""))
         add("ai", name, host, ["conversation"])
-        media = [capability for capability, enabled in (
-            ("image", agent.image_enabled), ("audio", agent.audio_enabled),
-        ) if enabled]
-        if media:
-            name, host = provider_destination(db, client.agency_id, providers.DEFAULT_PROVIDER)
-            add("ai", name, host, media)
+        for capability, enabled, model in (
+            ("image", agent.image_enabled, agent.image_model or agent.model or ""),
+            ("audio", agent.audio_enabled, agent.audio_model or ""),
+        ):
+            if enabled:
+                name, host = provider_destination(db, client.agency_id, providers.provider_for_model(db, client.agency_id, model))
+                add("ai", name, host, [capability])
     for tool_type, url in db.execute(
         select(AgentTool.type, AgentTool.url).join(Agent, Agent.id == AgentTool.agent_id)
         .where(Agent.client_id == client.id, AgentTool.enabled.is_(True))

@@ -10,7 +10,7 @@ from .. import industries
 from .attachments import llm_text
 from ..models import Agent, KnowledgeChunk, KnowledgeDocument
 from .embeddings import cosine_similarity, embed_query, embed_texts
-from .providers import DEFAULT_PROVIDER, resolve_provider_credentials
+from .providers import resolve_model_credentials
 
 
 MAX_FULL_CONTEXT_CHARS = 45_000
@@ -99,7 +99,7 @@ async def embed_document_chunks(db: Session, agent: Agent, document: KnowledgeDo
     """
     if not document.extracted_text.strip():
         return 0
-    credentials = resolve_provider_credentials(db, agent.agency_id, DEFAULT_PROVIDER)
+    credentials = resolve_model_credentials(db, agent.agency_id, agent.embedding_model)
     if not credentials:
         return 0
     pieces = _chunks(document.extracted_text)
@@ -130,7 +130,7 @@ async def reindex_document(db: Session, agent: Agent, document: KnowledgeDocumen
     """Re-embed one document with the agent's current model. Raises RuntimeError
     when there is no provider key or the provider returned nothing, so the
     caller can report it. A document with no usable text is a no-op (returns 0)."""
-    if not resolve_provider_credentials(db, agent.agency_id, DEFAULT_PROVIDER):
+    if not resolve_model_credentials(db, agent.agency_id, agent.embedding_model):
         raise RuntimeError("No provider key is configured for embeddings")
     if document.status != "processed" or not document.extracted_text.strip():
         return 0
@@ -147,7 +147,7 @@ async def reindex_agent(db: Session, agent: Agent) -> int:
     has no provider key or the provider rejected the embedding calls, so the
     caller can report it instead of silently leaving documents unindexed.
     """
-    if not resolve_provider_credentials(db, agent.agency_id, DEFAULT_PROVIDER):
+    if not resolve_model_credentials(db, agent.agency_id, agent.embedding_model):
         raise RuntimeError("No provider key is configured for embeddings")
     documents = list(db.scalars(select(KnowledgeDocument).where(KnowledgeDocument.agent_id == agent.id)).all())
     written = 0
@@ -181,7 +181,7 @@ async def retrieve_knowledge(db: Session, agent: Agent, query: str) -> Knowledge
 
 
 async def _semantic_search(db: Session, agent: Agent, query: str) -> KnowledgeResult | None:
-    credentials = resolve_provider_credentials(db, agent.agency_id, DEFAULT_PROVIDER)
+    credentials = resolve_model_credentials(db, agent.agency_id, agent.embedding_model)
     if not credentials:
         return None
     chunks = list(

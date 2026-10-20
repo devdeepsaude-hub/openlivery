@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 import httpx
 from fastapi import HTTPException
 
+from . import vendors
+
 logger = logging.getLogger(__name__)
 
 
@@ -123,7 +125,8 @@ async def _chat_completions(base_url, api_key, model, messages, temperature, max
         # carries the real charge instead of waiting on a reconcile.
         "usage": {"include": True},
     }
-    data = await post_completion(chat_url(base_url), auth_headers(api_key), payload, sampling_params(temperature, max_tokens))
+    payload, sampling = await vendors.adapt_chat(base_url, api_key, payload, sampling_params(temperature, max_tokens))
+    data = await post_completion(chat_url(base_url), auth_headers(api_key), payload, sampling)
     return completion_from(extract_chat_text(data), read_usage(data), data)
 
 
@@ -267,8 +270,12 @@ async def test_provider(provider: str, base_url: str, api_key: str) -> dict:
     """Verify a key by asking the provider about it.
 
     ``GET {base_url}/key`` needs a valid key and describes it (OpenRouter's
-    model list is public, so listing models would accept any string).
+    model list is public, so listing models would accept any string). A direct
+    vendor's model list does need a valid key, so that is what it is asked.
     """
+    vendor = vendors.vendor_for_base_url(base_url)
+    if vendor:
+        return await vendors.test_key(vendor, base_url, api_key)
     url = f"{base_url.rstrip('/')}/key"
     try:
         async with httpx.AsyncClient(timeout=25) as client:

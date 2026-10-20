@@ -3,6 +3,7 @@ import base64
 import httpx
 from fastapi import HTTPException
 
+from . import vendors
 from .ai import Completion, _safe_provider_error, auth_headers, chat_url, completion_from, extract_chat_text, read_usage
 
 
@@ -50,7 +51,16 @@ async def transcribe_audio(
     The router names the call in the ``X-Generation-Id`` header, and its
     record (with what the vendor charged) exists some ten seconds later;
     ``usage.reconcile_generation`` reads it then.
+
+    Gemini, used directly, transcribes through its native API instead; the
+    other direct vendors take no audio.
     """
+    vendor = vendors.vendor_for_base_url(base_url)
+    if vendor == "google":
+        result = await vendors.transcribe_with_gemini(api_key, model, audio, content_type)
+        return Completion(result["text"], result["input_tokens"], result["output_tokens"])
+    if vendor:
+        raise HTTPException(status_code=502, detail="This provider does not transcribe audio. Pick a Gemini model for audio.")
     url = f"{base_url.rstrip('/')}/audio/transcriptions"
     files = {"file": (filename, audio, content_type), "model": (None, model)}
     headers = {key: value for key, value in auth_headers(api_key).items() if key != "Content-Type"}
@@ -94,6 +104,7 @@ async def describe_image(
             }
         ],
     }
+    payload, _ = await vendors.adapt_chat(base_url, api_key, payload, {})
     try:
         async with httpx.AsyncClient(timeout=120) as client:
             response = await client.post(chat_url(base_url), headers=auth_headers(api_key), json=payload)

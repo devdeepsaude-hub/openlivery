@@ -27,7 +27,7 @@ from .notifications import notify_needs_human
 from .routing import route_new_conversation_by_tags
 from .model_catalog import DEFAULT_AUDIO_MODEL
 from .availability import on_duty
-from .providers import DEFAULT_PROVIDER, resolve_agent_credentials, resolve_provider_credentials
+from .providers import provider_for_model, resolve_agent_credentials, resolve_model_credentials
 from .tools import run_completion
 from .usage import record_usage, schedule_generation_reconcile
 from .capture import apply_captures, build_capture_spec, capture_context, field_definitions
@@ -110,26 +110,29 @@ async def resolve_inbound_content(
     enabled = (inbound.media_kind == "image" and agent.image_enabled) or (
         inbound.media_kind == "audio" and agent.audio_enabled
     )
-    credentials = resolve_provider_credentials(db, agent.agency_id, DEFAULT_PROVIDER)
+    if inbound.media_kind == "image":
+        model = agent.image_model.strip() or agent.model.strip()
+    else:
+        model = agent.audio_model.strip() or DEFAULT_AUDIO_MODEL
+    credentials = resolve_model_credentials(db, agent.agency_id, model)
     if not enabled or not credentials:
         return text, text or _media_placeholder(inbound.media_kind)
+    provider = provider_for_model(db, agent.agency_id, model)
     try:
         data = inbound.media_bytes
         base_url, api_key = credentials
         if inbound.media_kind == "image":
-            model = agent.image_model.strip() or agent.model.strip()
             instruction = (
                 "Describe con detalle el contenido de esta imagen para que un asistente pueda responder al cliente."
                 + (f" El cliente escribió: {text}" if text else "")
             )
             described = await describe_image(base_url, api_key, model, data, inbound.media_mime or "image/jpeg", instruction)
-            record = record_usage(db, agent.agency_id, agent.id, DEFAULT_PROVIDER, model, described, conversation=conversation, message=message)
+            record = record_usage(db, agent.agency_id, agent.id, provider, model, described, conversation=conversation, message=message)
             schedule_generation_reconcile(record, described, base_url, api_key)
             return text, (f"{text}\n\n" if text else "") + f"[Imagen recibida] {described.text}"
-        model = agent.audio_model.strip() or DEFAULT_AUDIO_MODEL
         mime = inbound.media_mime or "audio/ogg"
         transcribed = await transcribe_audio(base_url, api_key, model, data, audio_filename(mime), mime)
-        record = record_usage(db, agent.agency_id, agent.id, DEFAULT_PROVIDER, model, transcribed, conversation=conversation, message=message)
+        record = record_usage(db, agent.agency_id, agent.id, provider, model, transcribed, conversation=conversation, message=message)
         schedule_generation_reconcile(record, transcribed, base_url, api_key)
         return text, (f"{text}\n\n" if text else "") + (transcribed.text or _media_placeholder("audio"))
     except (HTTPException, ValueError):

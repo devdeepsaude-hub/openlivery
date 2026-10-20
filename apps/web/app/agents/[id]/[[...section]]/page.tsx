@@ -48,9 +48,9 @@ export default function AgentDetailPage() {
   const [replyDelayMax, setReplyDelayMax] = useState(9);
   const [imageEnabled, setImageEnabled] = useState(false);
   const [schedule, setSchedule] = useState<{ enabled: boolean; slots: ScheduleSlot[] }>({ enabled: false, slots: [] });
-  const [imageModel, setImageModel] = useState<string>(DEFAULT_IMAGE_MODEL);
+  const [pickedImageModel, setImageModel] = useState<string>(DEFAULT_IMAGE_MODEL);
   const [audioEnabled, setAudioEnabled] = useState(false);
-  const [audioModel, setAudioModel] = useState<string>(DEFAULT_AUDIO_MODEL);
+  const [pickedAudioModel, setAudioModel] = useState<string>(DEFAULT_AUDIO_MODEL);
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [qaPairs, setQaPairs] = useState<QAPair[]>([]);
   const [tools, setTools] = useState<AgentTool[]>([]);
@@ -78,6 +78,16 @@ export default function AgentDetailPage() {
     setAudioEnabled(a.audio_enabled); setAudioModel(a.audio_model || DEFAULT_AUDIO_MODEL);
   };
 
+  // The preset media defaults may be models this workspace cannot reach (no
+  // key for their vendor); until the user picks one, an allowed model stands in.
+  const allowedImage = available?.image;
+  const imageModel = pickedImageModel === DEFAULT_IMAGE_MODEL && allowedImage?.length && !allowedImage.includes(pickedImageModel)
+    ? (allowedImage.includes(model) ? model : allowedImage[0])
+    : pickedImageModel;
+  const allowedAudio = available?.audio;
+  const audioModel = pickedAudioModel === DEFAULT_AUDIO_MODEL && allowedAudio?.length && !allowedAudio.includes(pickedAudioModel)
+    ? allowedAudio[0]
+    : pickedAudioModel;
   const contextWindow = modelContextWindow(model);
   const contextPct = Math.min(100, Math.round(((promptTokens ?? 0) / contextWindow) * 100));
   useEffect(() => { load(); }, [id]);

@@ -38,6 +38,15 @@ Some capabilities use dedicated model sets rather than the chat model:
 
 The key is set once per agency, but each agent picks its own model. You do this when you create or edit an agent, choosing from the presets above or typing a slug. See [Agents](agents.md) for how model choice, instructions and knowledge come together.
 
+## Direct vendor keys (Anthropic, DeepSeek, Google Gemini)
+
+Settings also takes keys for Anthropic, DeepSeek and Google Gemini. Agents keep picking OpenRouter slugs; when the agency has a key in use for a slug's vendor (`anthropic/…`, `deepseek/…`, `google/…`), the request goes straight to that vendor's OpenAI-compatible endpoint, and every other slug still goes through OpenRouter. Pausing a vendor key hands its models back to OpenRouter.
+
+- **Model ids.** The slug is matched against the models the vendor serves the key (`anthropic/claude-haiku-4.5` is sent as `claude-haiku-4-5-20251001`). Without an OpenRouter key, the pickers offer only what the vendor keys serve; a vendor model OpenRouter does not list appears as `vendor/id`.
+- **Knowledge base and audio.** Of the three, only Gemini serves embeddings (`google/gemini-embedding-001`) and transcribes audio (through its native API, which takes WhatsApp voice notes as they are). Set `DEFAULT_EMBEDDING_MODEL`, `DEFAULT_AUDIO_MODEL` and `TRANSCRIPTION_MODELS` in `.env.docker` so new agents start with models your keys serve.
+- **Sampling.** Requests to Anthropic leave the temperature out: current Claude models refuse values below 1 on that endpoint.
+- **Cost.** Vendors do not report a price per call, so those usage rows are valued at the catalog's list price in Reports.
+
 ## Upgrading from OpenAI and Anthropic keys
 
 Releases before migration `0042_openrouter` stored OpenAI and Anthropic keys and used bare model ids. The migration moves every agent to OpenRouter and rewrites its model ids to slugs (`gpt-4.1-mini` becomes `openai/gpt-4.1-mini`, `claude-sonnet-5` becomes `anthropic/claude-sonnet-5`, `whisper-1` becomes `openai/gpt-4o-mini-transcribe`). The old keys are dropped, since OpenRouter cannot use them: after upgrading, add an OpenRouter key in Settings and the agents reply again.

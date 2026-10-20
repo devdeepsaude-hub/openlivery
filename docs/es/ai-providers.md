@@ -38,6 +38,15 @@ Algunas capacidades usan conjuntos de modelos dedicados en lugar del modelo de c
 
 La clave se define una vez por agencia, pero cada agente elige su propio modelo. Lo haces al crear o editar un agente, escogiendo entre los presets anteriores o escribiendo un slug. Consulta [Agentes](agents.md) para ver cómo se combinan la elección de modelo, las instrucciones y el conocimiento.
 
+## Claves directas de proveedores (Anthropic, DeepSeek, Google Gemini)
+
+Ajustes también acepta claves de Anthropic, DeepSeek y Google Gemini. Los agentes siguen eligiendo slugs de OpenRouter; cuando la agencia tiene en uso una clave del proveedor de un slug (`anthropic/…`, `deepseek/…`, `google/…`), la petición va directo al endpoint compatible con OpenAI de ese proveedor, y el resto de los slugs sigue pasando por OpenRouter. Pausar una clave de proveedor devuelve sus modelos a OpenRouter.
+
+- **Identificadores de modelo.** El slug se compara con los modelos que el proveedor sirve a la clave (`anthropic/claude-haiku-4.5` se envía como `claude-haiku-4-5-20251001`). Sin clave de OpenRouter, los selectores ofrecen solo lo que sirven las claves de proveedor; un modelo que OpenRouter no lista aparece como `proveedor/id`.
+- **Base de conocimiento y audio.** De los tres, solo Gemini sirve embeddings (`google/gemini-embedding-001`) y transcribe audio (con su API nativa, que acepta las notas de voz de WhatsApp tal cual). Define `DEFAULT_EMBEDDING_MODEL`, `DEFAULT_AUDIO_MODEL` y `TRANSCRIPTION_MODELS` en `.env.docker` para que los agentes nuevos empiecen con modelos que tus claves sirven.
+- **Muestreo.** Las peticiones a Anthropic omiten la temperatura: los modelos Claude actuales rechazan valores menores que 1 en ese endpoint.
+- **Costo.** Los proveedores no informan un precio por llamada, así que en Reportes esos registros se valoran al precio de lista del catálogo.
+
 ## Actualizar desde claves de OpenAI y Anthropic
 
 Las versiones anteriores a la migración `0042_openrouter` guardaban claves de OpenAI y Anthropic y usaban identificadores de modelo sin proveedor. La migración pasa todos los agentes a OpenRouter y reescribe sus modelos como slugs (`gpt-4.1-mini` pasa a `openai/gpt-4.1-mini`, `claude-sonnet-5` a `anthropic/claude-sonnet-5`, `whisper-1` a `openai/gpt-4o-mini-transcribe`). Las claves antiguas se eliminan, porque OpenRouter no puede usarlas: tras actualizar, agrega una clave de OpenRouter en Ajustes y los agentes vuelven a responder.

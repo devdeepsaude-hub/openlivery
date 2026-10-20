@@ -1,11 +1,13 @@
 from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
+from ..database import get_db
 from ..deps import get_current_user
 from ..models import User
 from ..schemas import EmbeddingModelOut, ModelCatalogOut
-from ..services import model_catalog
+from ..services import model_catalog, providers, vendors
 from ..services.model_catalog import get_model, list_embedding_models, list_models
 
 
@@ -13,10 +15,15 @@ router = APIRouter(prefix="/catalog", tags=["Model catalog"])
 
 
 @router.get("/available")
-def available_models(user: User = Depends(get_current_user)):
+async def available_models(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Model ids this workspace can pick, per provider and capability. A
     module call on purpose, so a deployment can narrow the answer."""
-    return model_catalog.available_models()
+    keys = providers.direct_credentials(db, user.agency_id)
+    if not keys:
+        return model_catalog.available_models()
+    direct = {vendor: await vendors.vendor_models(vendor, base_url, api_key) for vendor, (base_url, api_key) in keys.items()}
+    openrouter = providers.credential_source(db, user.agency_id, providers.DEFAULT_PROVIDER) != "none"
+    return model_catalog.available_models(direct, openrouter=openrouter)
 
 
 @router.get("/models", response_model=list[ModelCatalogOut])

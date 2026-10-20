@@ -14,7 +14,7 @@ from ..models import Agent, Conversation, Message, now_utc
 from .attachments import MAX_ATTACHMENT_BYTES, attachment_kind, store_attachment
 from .media import audio_filename, describe_image, transcribe_audio
 from .model_catalog import DEFAULT_AUDIO_MODEL
-from .providers import DEFAULT_PROVIDER, resolve_provider_credentials
+from .providers import provider_for_model, resolve_model_credentials
 from .usage import record_usage, schedule_generation_reconcile
 from .whatsapp import send_channel_media
 
@@ -41,21 +41,20 @@ async def _operator_media_llm_text(
     detail = ""
     agent: Agent = conversation.agent
     enabled = (kind == "image" and agent.image_enabled) or (kind == "audio" and agent.audio_enabled)
-    credentials = resolve_provider_credentials(db, agent.agency_id, DEFAULT_PROVIDER) if enabled else None
+    model = (agent.image_model.strip() or agent.model.strip()) if kind == "image" else (agent.audio_model.strip() or DEFAULT_AUDIO_MODEL)
+    credentials = resolve_model_credentials(db, agent.agency_id, model) if enabled else None
     if credentials:
         base_url, api_key = credentials
         try:
             if kind == "image":
-                model = agent.image_model.strip() or agent.model.strip()
                 instruction = (
                     "Describe brevemente el contenido de esta imagen que un operador humano envió al cliente,"
                     " para que el asistente tenga contexto de la conversación."
                 )
                 result = await describe_image(base_url, api_key, model, data, mime, instruction)
             else:
-                model = agent.audio_model.strip() or DEFAULT_AUDIO_MODEL
                 result = await transcribe_audio(base_url, api_key, model, data, filename or audio_filename(mime), mime)
-            record = record_usage(db, agent.agency_id, agent.id, DEFAULT_PROVIDER, model, result, conversation=conversation, message=message)
+            record = record_usage(db, agent.agency_id, agent.id, provider_for_model(db, agent.agency_id, model), model, result, conversation=conversation, message=message)
             schedule_generation_reconcile(record, result, base_url, api_key)
             detail = result.text or ""
         except (HTTPException, ValueError):

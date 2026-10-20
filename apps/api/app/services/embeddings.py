@@ -9,6 +9,7 @@ import math
 
 import httpx
 
+from . import vendors
 from .ai import auth_headers
 from .model_catalog import DEFAULT_EMBEDDING_MODEL
 
@@ -20,8 +21,8 @@ async def embed_texts(base_url: str, api_key: str, texts: list[str], model: str 
         return []
     url = f"{base_url.rstrip('/')}/embeddings"
     headers = auth_headers(api_key)
-    payload = {"model": model or DEFAULT_EMBEDDING_MODEL, "input": texts}
     try:
+        payload = {"model": await vendors.wire_model(base_url, api_key, model or DEFAULT_EMBEDDING_MODEL), "input": texts}
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post(url, headers=headers, json=payload)
         if response.status_code >= 400:

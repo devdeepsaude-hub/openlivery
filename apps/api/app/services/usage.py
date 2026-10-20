@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..database import new_session
 from ..models import Conversation, Message, UsageRecord, new_uuid
+from . import vendors
 from .ai import Completion, auth_headers
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,10 @@ def schedule_generation_reconcile(record: UsageRecord | None, completion: Comple
     background of the current event loop; a no-op when there is nothing to
     reconcile or no loop (a synchronous caller)."""
     if record is None or completion.cost_usd is not None or not completion.generation_id:
+        return
+    # Only OpenRouter keeps a record of each call; a direct vendor's row stays
+    # unpriced and Reports values it at list price.
+    if vendors.vendor_for_base_url(base_url):
         return
     try:
         loop = asyncio.get_running_loop()

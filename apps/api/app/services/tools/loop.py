@@ -8,6 +8,7 @@ the loop ends.
 
 import json
 
+from .. import vendors
 from ..ai import Completion, Usage, _post_json, auth_headers, chat_message, chat_url, completion_from, extract_chat_text, post_completion, read_usage, sampling_params
 from ..tool_files import MAX_TOOL_FILES
 from .http_exec import execute_http_tool
@@ -65,7 +66,8 @@ async def tool_loop(
             # Cap reached: tools stay in the payload (required when the history
             # contains tool calls) but the model must answer with text.
             payload["tool_choice"] = "none"
-        data = await post_completion(url, headers, payload, sampling, post=_post_json)
+        wire_payload, wire_sampling = await vendors.adapt_chat(base_url, api_key, payload, sampling)
+        data = await post_completion(url, headers, wire_payload, wire_sampling, post=_post_json)
         usage = usage + read_usage(data)
         message = chat_message(data)
         calls = [call for call in (message.get("tool_calls") or []) if call.get("type", "function") == "function"]

@@ -38,8 +38,8 @@ const en = {
     notificationsOn: "Notifications are on for this browser.",
   },
   providers: {
-    heading: "AI provider key",
-    copy: "Add your OpenRouter API key. Every agent in the agency uses it to reach any model.",
+    heading: "AI provider keys",
+    copy: "Add an OpenRouter key to reach any model, or keys for Anthropic, DeepSeek or Google Gemini to use those vendors directly. A model from a vendor with its own key goes straight to that vendor; everything else goes through OpenRouter.",
     byo: "Bring your own {label} API key to power your agents.",
     apiKey: "{label} API key",
     save: "Save key",
@@ -95,8 +95,8 @@ const es: typeof en = {
     notificationsOn: "Las notificaciones están activas en este navegador.",
   },
   providers: {
-    heading: "Clave del proveedor de IA",
-    copy: "Agrega tu clave de API de OpenRouter. Todos los agentes de la agencia la usan para acceder a cualquier modelo.",
+    heading: "Claves de proveedores de IA",
+    copy: "Agrega una clave de OpenRouter para acceder a cualquier modelo, o claves de Anthropic, DeepSeek o Google Gemini para usar esos proveedores directamente. Un modelo de un proveedor con clave propia va directo a ese proveedor; el resto pasa por OpenRouter.",
     byo: "Usa tu propia clave de API de {label} para que la usen tus agentes.",
     apiKey: "Clave de API de {label}",
     save: "Guardar clave",

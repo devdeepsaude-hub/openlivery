@@ -54,6 +54,12 @@ export const PROVIDERS = [
       { id: "x-ai/grok-4.5", label: "Grok 4.5", group: "capable" },
     ] as const satisfies readonly ModelOption[],
   },
+  // Vendors an agency can also reach directly with its own key. They hold no
+  // model list of their own: agents keep picking OpenRouter slugs, and the API
+  // sends a slug to its vendor when that vendor's key is configured.
+  { id: "anthropic", label: "Anthropic", keyPlaceholder: "sk-ant-api03-...", keyUrl: "https://platform.claude.com/settings/keys", models: [] as const satisfies readonly ModelOption[] },
+  { id: "deepseek", label: "DeepSeek", keyPlaceholder: "sk-...", keyUrl: "https://platform.deepseek.com/api_keys", models: [] as const satisfies readonly ModelOption[] },
+  { id: "google", label: "Google Gemini", keyPlaceholder: "AIza...", keyUrl: "https://aistudio.google.com/apikey", models: [] as const satisfies readonly ModelOption[] },
 ] as const;
 
 export type ProviderId = (typeof PROVIDERS)[number]["id"];

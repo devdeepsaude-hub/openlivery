@@ -35,7 +35,13 @@ export default function NewAgentPage() {
   const [personality, setPersonality] = useState("");
   const [brief, setBrief] = useState({ summary: "", products: "", audience: "", policies: "", dos: "", donts: "" });
   const provider = DEFAULT_PROVIDER;
-  const [model, setModel] = useState(defaultModelFor(provider));
+  const [pickedModel, setModel] = useState(defaultModelFor(provider));
+  // The preset default may be a model this workspace cannot reach (no key for
+  // its vendor); until the user picks one, the first allowed model stands in.
+  const allowedChat = available?.chat?.[provider];
+  const model = allowedChat?.length && pickedModel === defaultModelFor(provider) && !allowedChat.includes(pickedModel)
+    ? narrowModels(modelsFor(provider), allowedChat)[0]
+    : pickedModel;
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(2048);
   const [memoryLimit, setMemoryLimit] = useState(30);

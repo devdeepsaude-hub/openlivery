@@ -42,9 +42,9 @@ MIN_EMBEDDING_CONTEXT = 2_000
 CHARS_PER_TOKEN = 4
 
 # Transcription model an agent gets unless it picks another one.
-DEFAULT_AUDIO_MODEL = "openai/gpt-4o-mini-transcribe"
+DEFAULT_AUDIO_MODEL = get_settings().default_audio_model
 # Embedding model an agent's knowledge base uses unless it picks another one.
-DEFAULT_EMBEDDING_MODEL = "openai/text-embedding-3-small"
+DEFAULT_EMBEDDING_MODEL = get_settings().default_embedding_model
 
 
 @dataclass(frozen=True)
@@ -195,7 +195,7 @@ def _seed() -> Snapshot:
     """What the catalog offers before OpenRouter has answered once: the
     defaults, so an agent can still be created, and nothing priced."""
     chat = ModelInfo("openai/gpt-6-luna", "openai", "GPT-6 Luna", "openai", 0, 0, True, True, 0.0, 0.0)
-    embedding = EmbeddingModelInfo(DEFAULT_EMBEDDING_MODEL, "openai", "text-embedding-3-small", 8_192, 0.0)
+    embedding = EmbeddingModelInfo(DEFAULT_EMBEDDING_MODEL, _vendor(DEFAULT_EMBEDDING_MODEL), _label("", DEFAULT_EMBEDDING_MODEL), 8_192, 0.0)
     return Snapshot((chat,), (embedding,), _audio_entries(), None)
 
 
@@ -281,17 +281,64 @@ def audio_models() -> list[str]:
     return [model.id for model in _snapshot().audio]
 
 
-def available_models() -> dict:
+def available_models(direct: dict[str, list[str]] | None = None, *, openrouter: bool = True) -> dict:
     """Model ids a workspace can pick, per provider and capability.
 
     A stock install offers everything OpenRouter serves. A deployment may
     narrow this (for example to the models its managed credit can serve),
     which is why the frontend asks instead of trusting its static lists.
+
+    ``direct`` maps a vendor the agency holds a key for to the model ids that
+    vendor serves the key. Without an OpenRouter key (``openrouter=False``)
+    the offer is only what those vendors serve; with one, it is everything.
     """
     snapshot = _snapshot()
-    return {
-        "chat": {"openrouter": [model.id for model in snapshot.models]},
-        "image": [model.id for model in snapshot.models if model.supports_vision],
-        "audio": [model.id for model in snapshot.audio],
-        "embedding": [model.id for model in snapshot.embeddings],
-    }
+    if openrouter or not direct:
+        return {
+            "chat": {"openrouter": [model.id for model in snapshot.models]},
+            "image": [model.id for model in snapshot.models if model.supports_vision],
+            "audio": [model.id for model in snapshot.audio],
+            "embedding": [model.id for model in snapshot.embeddings],
+        }
+    return direct_offer(snapshot, direct)
+
+
+def direct_offer(snapshot: Snapshot, direct: dict[str, list[str]]) -> dict:
+    """What an agency can pick with vendor keys only: the catalog models those
+    vendors serve (keeping OpenRouter's slug, so labels and prices still
+    apply), plus any model a vendor serves that the catalog does not list,
+    under ``vendor/id``."""
+    from . import vendors
+
+    chat: list[str] = []
+    image: list[str] = []
+    embedding: list[str] = []
+    for vendor, natives in direct.items():
+        matched: set[str] = set()
+        for model in snapshot.models:
+            if model.provider != vendor:
+                continue
+            native = vendors.match_model(vendors.slug_name(model.id), natives)
+            if native:
+                matched.add(native)
+                chat.append(model.id)
+                if model.supports_vision:
+                    image.append(model.id)
+        for model in snapshot.embeddings:
+            if model.provider != vendor:
+                continue
+            native = vendors.match_model(vendors.slug_name(model.id), natives)
+            if native:
+                matched.add(native)
+                embedding.append(model.id)
+        for native in natives:
+            if native in matched:
+                continue
+            if vendors.is_embedding_model(vendor, native):
+                embedding.append(f"{vendor}/{native}")
+            elif vendors.is_chat_model(vendor, native):
+                chat.append(f"{vendor}/{native}")
+    # Gemini is the one direct vendor that transcribes: its configured
+    # transcription models are offered when the agency has its key.
+    audio = [model.id for model in snapshot.audio if model.provider == "google" and "google" in direct]
+    return {"chat": {"openrouter": chat}, "image": image, "audio": audio, "embedding": embedding}

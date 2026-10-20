@@ -5,6 +5,11 @@ OpenAI-compatible API, so an agency configures a single key and picks any
 model by its OpenRouter slug (``openai/gpt-6-luna``, ``anthropic/claude-sonnet-5``).
 The registry keeps its dict shape so a deployment can still swap the base URL
 or resolve credentials differently without touching the call sites.
+
+An agency may also hold keys for vendors directly (Anthropic, DeepSeek,
+Google). Models keep their OpenRouter slugs; a slug whose vendor has a key in
+use is served by that vendor (see ``services/vendors.py``), and every other
+slug still goes through OpenRouter.
 """
 
 from collections.abc import Callable
@@ -30,9 +35,14 @@ CredentialSource = Literal["agency", "deployment", "none"]
 
 PROVIDERS: dict[str, dict[str, str]] = {
     "openrouter": {"label": "OpenRouter", "base_url": "https://openrouter.ai/api/v1"},
+    "anthropic": {"label": "Anthropic", "base_url": "https://api.anthropic.com/v1", "vendor": "anthropic"},
+    "deepseek": {"label": "DeepSeek", "base_url": "https://api.deepseek.com", "vendor": "deepseek"},
+    "google": {"label": "Google Gemini", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai", "vendor": "google"},
 }
 SUPPORTED = tuple(PROVIDERS)
 DEFAULT_PROVIDER = "openrouter"
+# Slug vendor -> the direct provider that serves it when the agency has its key.
+DIRECT_PROVIDERS = {config["vendor"]: provider for provider, config in PROVIDERS.items() if config.get("vendor")}
 
 
 def base_url_for(provider: str) -> str:
@@ -95,6 +105,31 @@ def resolve_provider_credentials(db: Session, agency_id, provider: str) -> tuple
     return None
 
 
+def provider_for_model(db: Session, agency_id, model: str) -> str:
+    """The provider a model slug is served by: its vendor's direct provider
+    when the agency has that key in use, else OpenRouter."""
+    vendor = model.split("/", 1)[0] if "/" in model else ""
+    direct = DIRECT_PROVIDERS.get(vendor)
+    if direct and _in_use(db, agency_id, direct) is not None:
+        return direct
+    return DEFAULT_PROVIDER
+
+
+def direct_credentials(db: Session, agency_id) -> dict[str, tuple[str, str]]:
+    """Slug vendor -> (base_url, api_key) for every direct key the agency has in use."""
+    found: dict[str, tuple[str, str]] = {}
+    for vendor, provider in DIRECT_PROVIDERS.items():
+        credential = _in_use(db, agency_id, provider)
+        if credential is not None:
+            found[vendor] = (base_url_for(provider), decrypt_secret(credential.encrypted_api_key))
+    return found
+
+
+def resolve_model_credentials(db: Session, agency_id, model: str) -> tuple[str, str] | None:
+    """(base_url, api_key) that serve a model slug for an agency."""
+    return resolve_provider_credentials(db, agency_id, provider_for_model(db, agency_id, model))
+
+
 def resolve_agent_credentials(db: Session, agent: Agent) -> tuple[str, str] | None:
-    """(base_url, api_key) for the agent's provider using the agency's stored key."""
-    return resolve_provider_credentials(db, agent.agency_id, agent.provider)
+    """(base_url, api_key) that serve the agent's chat model."""
+    return resolve_model_credentials(db, agent.agency_id, (agent.model or "").strip())

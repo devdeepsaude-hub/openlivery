@@ -133,7 +133,7 @@ def test_provider_key_is_stored_masked(authenticated_client: TestClient):
     assert "encrypted_api_key" not in saved.json()
 
     listed = authenticated_client.get("/api/providers").json()
-    assert {p["provider"] for p in listed} == {"openrouter"}
+    assert {p["provider"] for p in listed} == {"openrouter", "anthropic", "deepseek", "google"}
     assert next(p for p in listed if p["provider"] == "openrouter")["configured"] is True
 
 
