@@ -229,6 +229,13 @@ async def adapt_chat(base_url: str, api_key: str, payload: dict, sampling: dict)
         # Current Claude models reject any temperature below 1 on this endpoint;
         # leaving it out keeps the model's own default.
         sampling.pop("temperature", None)
+        # Claude 5 models think before answering by default, which this
+        # endpoint never returns but counts against max_tokens, cutting replies
+        # short. In sampling, so a model that refuses the setting is asked
+        # again without it.
+        thinking = get_settings().anthropic_thinking
+        if thinking:
+            sampling.setdefault("thinking", {"type": thinking})
         # Strict tool schemas are ignored there anyway.
         if payload.get("tools"):
             payload["tools"] = [_without_strict(tool) for tool in payload["tools"]]

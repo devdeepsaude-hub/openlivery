@@ -71,8 +71,9 @@ def test_anthropic_requests_are_fitted_to_its_endpoint():
     sent, sampling = asyncio.run(vendors.adapt_chat("https://api.anthropic.com/v1", "key", payload, {"temperature": 0.7, "max_tokens": 500}))
     assert sent["model"] == "claude-sonnet-5-20260901"
     assert "usage" not in sent and "strict" not in sent["tools"][0]["function"]
-    # Current Claude models refuse a temperature below 1 there; the cap stays.
-    assert sampling == {"max_tokens": 500}
+    # Current Claude models refuse a temperature below 1 there; the cap stays,
+    # and they are asked not to think before answering.
+    assert sampling == {"max_tokens": 500, "thinking": {"type": "between_tools"}}
     # The caller's payload is left as it was.
     assert payload["model"] == "anthropic/claude-sonnet-5" and "usage" in payload
 

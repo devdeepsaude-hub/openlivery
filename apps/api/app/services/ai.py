@@ -74,7 +74,7 @@ class Completion:
 # Substrings in a provider's 400 error that mean a sampling parameter is not
 # accepted (e.g. reasoning models that refuse temperature). When seen, we retry
 # once without those params.
-_SAMPLING_PARAM_HINTS = ("temperature", "max_tokens", "max_output_tokens", "max_completion_tokens", "reasoning", "unsupported", "not supported")
+_SAMPLING_PARAM_HINTS = ("temperature", "max_tokens", "max_output_tokens", "max_completion_tokens", "reasoning", "thinking", "unsupported", "not supported")
 
 
 async def chat_completion(

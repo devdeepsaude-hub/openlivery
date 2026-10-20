@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     # Reasoning effort sent to Gemini (minimal, low, medium, high); empty
     # leaves the model's default.
     gemini_reasoning_effort: str = "minimal"
+    # Thinking mode sent to Claude ("between_tools" keeps current models from
+    # thinking before they answer); empty leaves the model's default.
+    anthropic_thinking: str = "between_tools"
     # Official messaging APIs. App credentials remain on the server.
     social_graph_version: str = "v25.0"
     social_worker_enabled: bool = True
