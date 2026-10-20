@@ -77,14 +77,19 @@ class InboundResult:
     attachment_message_ids: list[str] = field(default_factory=list)
 
 
-def _media_placeholder(kind: str) -> str:
-    if kind == "image":
-        return "[El cliente envió una imagen]"
-    if kind == "audio":
-        return "[El cliente envió una nota de voz]"
-    if kind == "video":
-        return "[El cliente envió un video]"
-    return "[El cliente envió un archivo]"
+# LLM-facing markers for customer media. Spanish unless the agent's prompt is
+# in Portuguese, the one other language they are written in.
+_MEDIA_PLACEHOLDERS = {
+    "es": {"image": "[El cliente envió una imagen]", "audio": "[El cliente envió una nota de voz]",
+           "video": "[El cliente envió un video]", "file": "[El cliente envió un archivo]", "described": "[Imagen recibida]"},
+    "pt": {"image": "[O cliente enviou uma imagem]", "audio": "[O cliente enviou uma mensagem de voz]",
+           "video": "[O cliente enviou um vídeo]", "file": "[O cliente enviou um arquivo]", "described": "[Imagem recebida]"},
+}
+
+
+def _media_placeholder(kind: str, lang: str | None = None) -> str:
+    texts = _MEDIA_PLACEHOLDERS["pt" if lang == "pt" else "es"]
+    return texts.get(kind, texts["file"])
 
 
 async def resolve_inbound_content(
@@ -106,7 +111,7 @@ async def resolve_inbound_content(
     if not inbound.media_kind:
         return text, text
     if not inbound.media_bytes:
-        return text, text or _media_placeholder(inbound.media_kind)
+        return text, text or _media_placeholder(inbound.media_kind, agent.prompt_language)
     enabled = (inbound.media_kind == "image" and agent.image_enabled) or (
         inbound.media_kind == "audio" and agent.audio_enabled
     )
@@ -116,27 +121,33 @@ async def resolve_inbound_content(
         model = agent.audio_model.strip() or DEFAULT_AUDIO_MODEL
     credentials = resolve_model_credentials(db, agent.agency_id, model)
     if not enabled or not credentials:
-        return text, text or _media_placeholder(inbound.media_kind)
+        return text, text or _media_placeholder(inbound.media_kind, agent.prompt_language)
     provider = provider_for_model(db, agent.agency_id, model)
     try:
         data = inbound.media_bytes
         base_url, api_key = credentials
         if inbound.media_kind == "image":
-            instruction = (
-                "Describe con detalle el contenido de esta imagen para que un asistente pueda responder al cliente."
-                + (f" El cliente escribió: {text}" if text else "")
-            )
+            if agent.prompt_language == "pt":
+                instruction = (
+                    "Descreva em detalhes o conteúdo desta imagem para que uma assistente possa responder ao cliente."
+                    + (f" O cliente escreveu: {text}" if text else "")
+                )
+            else:
+                instruction = (
+                    "Describe con detalle el contenido de esta imagen para que un asistente pueda responder al cliente."
+                    + (f" El cliente escribió: {text}" if text else "")
+                )
             described = await describe_image(base_url, api_key, model, data, inbound.media_mime or "image/jpeg", instruction)
             record = record_usage(db, agent.agency_id, agent.id, provider, model, described, conversation=conversation, message=message)
             schedule_generation_reconcile(record, described, base_url, api_key)
-            return text, (f"{text}\n\n" if text else "") + f"[Imagen recibida] {described.text}"
+            return text, (f"{text}\n\n" if text else "") + f"{_media_placeholder('described', agent.prompt_language)} {described.text}"
         mime = inbound.media_mime or "audio/ogg"
         transcribed = await transcribe_audio(base_url, api_key, model, data, audio_filename(mime), mime)
         record = record_usage(db, agent.agency_id, agent.id, provider, model, transcribed, conversation=conversation, message=message)
         schedule_generation_reconcile(record, transcribed, base_url, api_key)
-        return text, (f"{text}\n\n" if text else "") + (transcribed.text or _media_placeholder("audio"))
+        return text, (f"{text}\n\n" if text else "") + (transcribed.text or _media_placeholder("audio", agent.prompt_language))
     except (HTTPException, ValueError):
-        return text, text or _media_placeholder(inbound.media_kind)
+        return text, text or _media_placeholder(inbound.media_kind, agent.prompt_language)
 
 
 async def process_inbound(

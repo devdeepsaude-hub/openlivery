@@ -19,16 +19,20 @@ from .usage import record_usage, schedule_generation_reconcile
 from .whatsapp import send_channel_media
 
 
-def _operator_media_marker(kind: str) -> str:
+_OPERATOR_MARKERS = {
+    "es": {"image": "[El operador envió una imagen]", "audio": "[El operador envió un audio]",
+           "video": "[El operador envió un video]", "file": "[El operador envió un archivo]"},
+    "pt": {"image": "[O atendente enviou uma imagem]", "audio": "[O atendente enviou um áudio]",
+           "video": "[O atendente enviou um vídeo]", "file": "[O atendente enviou um arquivo]"},
+}
+
+
+def _operator_media_marker(kind: str, lang: str | None = None) -> str:
     """LLM-visible note for an operator media message (kept in the customer's
-    language, like the rest of the LLM-facing markers)."""
-    if kind == "image":
-        return "[El operador envió una imagen]"
-    if kind == "audio":
-        return "[El operador envió un audio]"
-    if kind == "video":
-        return "[El operador envió un video]"
-    return "[El operador envió un archivo]"
+    language, like the rest of the LLM-facing markers): Spanish unless the
+    agent's prompt is in Portuguese."""
+    markers = _OPERATOR_MARKERS["pt" if lang == "pt" else "es"]
+    return markers.get(kind, markers["file"])
 
 
 async def _operator_media_llm_text(
@@ -61,7 +65,7 @@ async def _operator_media_llm_text(
             detail = ""
     if kind == "file" and filename:
         detail = filename
-    parts = [_operator_media_marker(kind)]
+    parts = [_operator_media_marker(kind, agent.prompt_language)]
     if detail:
         parts.append(detail)
     if caption:

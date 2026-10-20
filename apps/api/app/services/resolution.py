@@ -34,6 +34,15 @@ _RULES = {
         "When you use it, say goodbye naturally in your reply, without saying that you are closing the case or "
         "mentioning the tool."
     ),
+    "pt": (
+        "ENCERRAMENTO DA CONVERSA: você tem a ferramenta resolve_conversation. Use-a apenas quando o que o "
+        "cliente precisava foi atendido e não há nada pendente: ele confirmou que não precisa de mais nada, agradeceu "
+        "e se despediu, ou a solicitação que ele buscava foi concluída.\n"
+        "Não a use se você fez uma pergunta que ainda não foi respondida, se ele ainda espera algo de você ou da "
+        "empresa, ou se tiver dúvidas: nesse caso, deixe a conversa aberta.\n"
+        "Ao usá-la, despeça-se com naturalidade na sua resposta, sem dizer que está encerrando o atendimento nem "
+        "mencionar a ferramenta."
+    ),
 }
 
 

@@ -66,7 +66,7 @@ export type Agent = {
   brief_dos: string;
   brief_donts: string;
   model: string;
-  prompt_language: "en" | "es";
+  prompt_language: "en" | "es" | "pt";
   temperature: number;
   max_tokens: number;
   memory_limit: number;

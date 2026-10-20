@@ -169,7 +169,7 @@ class Agent(Base):
     # ``agents.timezone`` column is still in the database, unmapped, so the
     # previous release keeps running while the migration is applied; a later
     # migration drops it.
-    # Language of the prompt's headings and fixed sentences ("es" or "en").
+    # Language of the prompt's headings and fixed sentences ("es", "en" or "pt").
     # Set from the UI language when the agent is saved; the operator's own
     # text is inserted as written.
     prompt_language: Mapped[str] = mapped_column(String(5), default="es", server_default="es")

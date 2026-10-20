@@ -40,24 +40,27 @@ TOOL_NAME = "save_contact_field"
 # Built-in fields live in their own contact columns and exist for every client.
 BUILTIN_FIELDS = {
     "name": {
-        "kind": "text", "label": {"es": "Nombre", "en": "Name"},
+        "kind": "text", "label": {"es": "Nombre", "en": "Name", "pt": "Nome"},
         "description": {
             "es": "Cómo se llama el cliente. Pídelo con naturalidad en el saludo si aún no lo sabes.",
             "en": "What the customer is called. Ask for it naturally in the greeting if you do not know it yet.",
+            "pt": "Como o cliente se chama. Pergunte com naturalidade no cumprimento se ainda não souber.",
         },
     },
     "email": {
-        "kind": "email", "label": {"es": "Correo", "en": "Email"},
+        "kind": "email", "label": {"es": "Correo", "en": "Email", "pt": "E-mail"},
         "description": {
             "es": "Correo electrónico del cliente. Pídelo con naturalidad cuando muestre interés.",
             "en": "The customer's e-mail address. Ask for it naturally once they show interest.",
+            "pt": "E-mail do cliente. Peça com naturalidade quando ele demonstrar interesse.",
         },
     },
     "phone": {
-        "kind": "phone", "label": {"es": "Teléfono", "en": "Phone"},
+        "kind": "phone", "label": {"es": "Teléfono", "en": "Phone", "pt": "Telefone"},
         "description": {
             "es": "Número de teléfono del cliente, con indicativo del país. Pídelo cuando haga falta para contactarlo.",
             "en": "The customer's phone number, with the country code. Ask for it when it is needed to reach them.",
+            "pt": "Número de telefone do cliente, com o código do país. Peça quando for necessário para entrar em contato.",
         },
     },
 }
@@ -83,6 +86,17 @@ _TEXT = {
             "gives one, save it right away with the save_contact_field tool, as they said it, and carry on. If they "
             "do not give it or say it does not apply, do not insist. Never invent or infer a value: only save what "
             "the customer stated explicitly."
+        ),
+    },
+    "pt": {
+        "title": "Dados a coletar",
+        "rule": (
+            "Coletar estes dados do contato faz parte do seu trabalho nesta conversa; eles ainda não são conhecidos. "
+            "Pergunte cada um uma única vez, com naturalidade e no momento que a descrição indica, um de cada vez "
+            "e nunca como um formulário; se a descrição não definir um momento, faça isso antes de encerrar ou confirmar "
+            "qualquer solicitação. Quando o cliente informar um, salve na hora com a ferramenta save_contact_field, "
+            "exatamente como ele disse, e siga a conversa. Se ele não informar ou disser que não se aplica, não insista. "
+            "Nunca invente nem deduza um valor: salve apenas o que o cliente disse explicitamente."
         ),
     },
 }
@@ -115,7 +129,7 @@ def channel_group(channel: str | None) -> str | None:
 
 def field_definitions(db: Session, client_id, lang: str = "es") -> dict[str, FieldDefinition]:
     """Every field a contact of this client can hold, built-ins first."""
-    lang = lang if lang in ("es", "en") else "es"
+    lang = lang if lang in ("es", "en", "pt") else "es"
     definitions = {
         key: FieldDefinition(key=key, label=spec["label"][lang], kind=spec["kind"], description=spec["description"][lang], builtin=True)
         for key, spec in BUILTIN_FIELDS.items()

@@ -252,7 +252,7 @@ class AgentBase(BaseModel):
     brief_donts: str = ""
     model: str = ""
     provider: str = Field(default="openrouter", pattern=r"^(openrouter)$")
-    prompt_language: str = Field(default="es", pattern=r"^(en|es)$")
+    prompt_language: str = Field(default="es", pattern=r"^(en|es|pt)$")
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=2048, ge=1, le=32000)
     memory_limit: int = Field(default=30, ge=0, le=200)
@@ -292,7 +292,7 @@ class AgentUpdate(BaseModel):
     brief_donts: str | None = None
     model: str | None = None
     provider: str | None = Field(default=None, pattern=r"^(openrouter)$")
-    prompt_language: str | None = Field(default=None, pattern=r"^(en|es)$")
+    prompt_language: str | None = Field(default=None, pattern=r"^(en|es|pt)$")
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, ge=1, le=32000)
     memory_limit: int | None = Field(default=None, ge=0, le=200)

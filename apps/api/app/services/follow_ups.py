@@ -118,6 +118,37 @@ _TEXT = {
         "cue_close": "[Automatic notice, not a message from the customer: {elapsed} have passed without an answer. Write the closing message now.]",
         "hour": "hour", "hours": "hours", "minute": "minute", "minutes": "minutes", "and": "and",
     },
+    "pt": {
+        "first": (
+            "ACOMPANHAMENTO POR INATIVIDADE: o cliente parou de responder depois da sua última mensagem e você vai "
+            "escrever para ele de novo por iniciativa própria.\n"
+            "- Escreva uma única mensagem, curta e natural, no idioma do cliente, retomando o último assunto da "
+            "conversa: o que ficou pendente, a pergunta que você fez ou o próximo passo.\n"
+            "- Não repita sua mensagem anterior nem cumprimente como se a conversa estivesse começando. Não "
+            "pressione, não cobre pelo silêncio e não invente ofertas, preços nem informações.\n"
+            "- Responda apenas com o texto da mensagem."
+        ),
+        "second": (
+            "ACOMPANHAMENTO POR INATIVIDADE: o cliente continua sem responder, nem ao seu acompanhamento anterior, "
+            "e você vai escrever mais uma vez por iniciativa própria.\n"
+            "- Escreva uma única mensagem, mais curta que a anterior e diferente dela, no idioma do cliente, que "
+            "facilite retomar o que vocês estavam conversando.\n"
+            "- Não repita o que já disse. Não pressione, não cobre pelo silêncio e não invente ofertas, preços nem "
+            "informações.\n"
+            "- Responda apenas com o texto da mensagem."
+        ),
+        "close": (
+            "ENCERRAMENTO POR INATIVIDADE: o cliente não respondeu e esta conversa vai ser encerrada.\n"
+            "- Escreva uma única mensagem curta de encerramento, no idioma do cliente e no contexto do que vocês "
+            "estavam conversando: diga com gentileza que, como não teve resposta, você está encerrando a conversa "
+            "por enquanto, e que ele pode escrever de novo quando quiser para retomar.\n"
+            "- Sem cobranças e sem inventar ofertas, preços nem informações.\n"
+            "- Responda apenas com o texto da mensagem."
+        ),
+        "cue": "[Aviso automático, não é uma mensagem do cliente: passaram-se {elapsed} sem resposta. Escreva agora a mensagem de acompanhamento.]",
+        "cue_close": "[Aviso automático, não é uma mensagem do cliente: passaram-se {elapsed} sem resposta. Escreva agora a mensagem de encerramento.]",
+        "hour": "hora", "hours": "horas", "minute": "minuto", "minutes": "minutos", "and": "e",
+    },
 }
 
 

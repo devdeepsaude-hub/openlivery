@@ -40,6 +40,7 @@ export default function AgentDetailPage() {
   const [promptTokens, setPromptTokens] = useState<number | null>(null);
   const [provider, setProvider] = useState<string>(DEFAULT_PROVIDER);
   const [model, setModel] = useState("");
+  const [promptLanguage, setPromptLanguage] = useState<Agent["prompt_language"]>("es");
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(2048);
   const [memoryLimit, setMemoryLimit] = useState(30);
@@ -71,7 +72,7 @@ export default function AgentDetailPage() {
     setAgent(a); setName(a.name); setDocuments(d); setQaPairs(q); setTools(tl);
     // What the model receives on every message, measured on the real prompt.
     api<{ prompt: string }>(`/agents/${id}/prompt`).then((r) => setPromptTokens(estimateTokens(r.prompt))).catch(() => setPromptTokens(null));
-    setProvider(a.provider); setModel(a.model);
+    setProvider(a.provider); setModel(a.model); setPromptLanguage(a.prompt_language);
     setTemperature(a.temperature); setMaxTokens(a.max_tokens); setMemoryLimit(a.memory_limit); setPhoneHandoverMinutes(a.phone_handover_minutes); setReplyDelayMin(a.reply_delay_min_seconds); setReplyDelayMax(a.reply_delay_max_seconds);
     setImageEnabled(a.image_enabled); setImageModel(a.image_model || DEFAULT_IMAGE_MODEL);
     setSchedule({ enabled: a.schedule_enabled, slots: a.schedule_slots });
@@ -149,7 +150,7 @@ export default function AgentDetailPage() {
   async function saveConfig(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true);
     const form = new FormData(event.currentTarget);
-    const payload = { name, instructions: form.get("instructions"), personality: form.get("personality"), brief_summary: form.get("brief_summary"), brief_products: form.get("brief_products"), brief_audience: form.get("brief_audience"), brief_policies: form.get("brief_policies"), brief_dos: form.get("brief_dos"), brief_donts: form.get("brief_donts"), provider, model, prompt_language: lang, temperature, max_tokens: maxTokens, memory_limit: memoryLimit, phone_handover_minutes: phoneHandoverMinutes, reply_delay_min_seconds: replyDelayMin, reply_delay_max_seconds: replyDelayMax, image_enabled: imageEnabled, image_model: imageModel, audio_enabled: audioEnabled, audio_model: audioModel, schedule_enabled: schedule.enabled, schedule_slots: schedule.slots };
+    const payload = { name, instructions: form.get("instructions"), personality: form.get("personality"), brief_summary: form.get("brief_summary"), brief_products: form.get("brief_products"), brief_audience: form.get("brief_audience"), brief_policies: form.get("brief_policies"), brief_dos: form.get("brief_dos"), brief_donts: form.get("brief_donts"), provider, model, prompt_language: promptLanguage, temperature, max_tokens: maxTokens, memory_limit: memoryLimit, phone_handover_minutes: phoneHandoverMinutes, reply_delay_min_seconds: replyDelayMin, reply_delay_max_seconds: replyDelayMax, image_enabled: imageEnabled, image_model: imageModel, audio_enabled: audioEnabled, audio_model: audioModel, schedule_enabled: schedule.enabled, schedule_slots: schedule.slots };
     try {
       setAgent(await api<Agent>(`/agents/${id}`, { method: "PATCH", body: JSON.stringify(payload) }));
       api<{ prompt: string }>(`/agents/${id}/prompt`).then((r) => setPromptTokens(estimateTokens(r.prompt))).catch(() => {});
@@ -264,6 +265,7 @@ export default function AgentDetailPage() {
       <AgentScheduleEditor enabled={schedule.enabled} slots={schedule.slots} timezone={agent.client.timezone} locale={lang} onChange={setSchedule} />
       <section className="settings-section"><div className="settings-copy"><h3>{t("agents.detail.aiModelHeading")}</h3><p>{t("agents.detail.aiModelCopy")}</p></div><div className="settings-fields">
         <label>{t("agents.detail.modelLabel")}{(() => { const allowed = narrowModels(modelsFor(provider), available?.chat?.[provider]); const known = modelOptionsFor(provider).filter((item) => allowed.includes(item.id)); const ordered = [...known.filter((item) => item.recommended), ...known.filter((item) => !item.recommended)].map((item) => item.id); const options = [...ordered, ...allowed.filter((id) => !ordered.includes(id))]; const labels = Object.fromEntries(known.map((item) => [item.id, item.label])); const tierOf = (g: string) => g === "fast" ? t("agents.wizard.modelGroupFast") : g === "balanced" ? t("agents.wizard.modelGroupBalanced") : t("agents.wizard.modelGroupCapable"); const tags = Object.fromEntries(known.map((item) => [item.id, item.recommended ? t("agents.wizard.modelBadgeRecommended") : tierOf(item.group)])); return <Combobox value={model} onChange={setModel} options={options} labels={labels} tags={tags} placeholder={t("agents.detail.modelPlaceholder")} allowCustom />; })()}</label>
+        <label>{t("agents.detail.promptLanguageLabel")}<select value={promptLanguage} onChange={(e) => setPromptLanguage(e.target.value as Agent["prompt_language"])}><option value="en">{t("agents.detail.promptLanguageEn")}</option><option value="es">{t("agents.detail.promptLanguageEs")}</option><option value="pt">{t("agents.detail.promptLanguagePt")}</option></select><span className="field-help">{t("agents.detail.promptLanguageHint")}</span></label>
         <div className="context-bar"><div style={{ width: `${contextPct}%` }} /><small><Sparkles size={12} /> {t("agents.detail.promptTokens", { count: (promptTokens ?? 0).toLocaleString(lang) })} · {t("agents.detail.contextUsage", { count: (promptTokens ?? 0).toLocaleString(lang), total: contextWindow.toLocaleString(lang) })}</small></div>
         <Alert type="info">{t("agents.detail.providerKeysPrefix")}<Link href="/settings">{t("agents.detail.settingsLink")}</Link>.</Alert>
         <details className="advanced-options wizard-advanced"><summary>{t("agents.detail.advancedHeading")}</summary><p className="field-help">{t("agents.detail.advancedCopy")}</p>

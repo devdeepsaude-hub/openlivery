@@ -70,10 +70,13 @@ def record_outgoing(db, channel, payload):
     occurred = payload.occurred_at or now_utc()
     content = payload.text.strip()
     if not content:
-        labels = {"audio": ("Voice note", "Nota de voz"), "image": ("Image", "Imagen"),
-                  "video": ("Video", "Video"), "sticker": ("Sticker", "Sticker"),
-                  "document": ("File", "Archivo")}
-        label = labels.get(payload.media_kind, ("File", "Archivo"))[conversation.agent.prompt_language == "es"]
+        labels = {"audio": {"en": "Voice note", "es": "Nota de voz", "pt": "Mensagem de voz"},
+                  "image": {"en": "Image", "es": "Imagen", "pt": "Imagem"},
+                  "video": {"en": "Video", "es": "Video", "pt": "Vídeo"},
+                  "sticker": {"en": "Sticker", "es": "Sticker", "pt": "Figurinha"},
+                  "document": {"en": "File", "es": "Archivo", "pt": "Arquivo"}}
+        names = labels.get(payload.media_kind, labels["document"])
+        label = names.get(conversation.agent.prompt_language, names["en"])
         content = f"[{label}]"
     db.add(Message(conversation_id=conversation.id, role="assistant", sender_type="human",
         sender_name=channel.client.name, content=content,

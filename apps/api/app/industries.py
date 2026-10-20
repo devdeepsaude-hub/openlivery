@@ -18,7 +18,8 @@ class Label:
     es: str
 
     def get(self, lang: str) -> str:
-        return self.es if lang == "es" else self.en
+        # Portuguese prompts have no labels of their own; Spanish reads closest.
+        return self.es if lang in ("es", "pt") else self.en
 
 
 @dataclass(frozen=True)
