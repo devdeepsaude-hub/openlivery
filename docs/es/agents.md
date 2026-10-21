@@ -138,8 +138,10 @@ por regla o nada para que lo redacte la IA (`first_text`, `second_text`,
 lo pendiente cada `FOLLOW_UP_SWEEP_SECONDS` (60); con `0` se desactiva.
 `FOLLOW_UP_HOURS` (por ejemplo `8-20`) limita los mensajes a esas horas de la
 zona horaria del cliente: el que vence de noche espera a la mañana, y el
-siguiente guarda su distancia. Las respuestas a un cliente que escribe nunca
-esperan.
+siguiente guarda su distancia. `FOLLOW_UP_OPENING_SPREAD_MINUTES` (por ejemplo
+`30`) envía los de la mañana en un momento al azar dentro de esos minutos tras
+la hora de apertura, no justo en ella. Las respuestas a un cliente que escribe
+nunca esperan.
 
 ## El conocimiento en el prompt del sistema
 

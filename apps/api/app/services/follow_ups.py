@@ -26,6 +26,7 @@ open, and a contact who writes back in that time simply keeps talking.
 from __future__ import annotations
 
 import logging
+import random
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -250,7 +251,8 @@ def after_agent_reply(conversation: Conversation, agent: Agent, resolution=None,
 
 def next_opening(now: datetime, timezone_name: str | None) -> datetime | None:
     """When a follow-up due ``now`` may go out under ``FOLLOW_UP_HOURS``: None
-    when it may go now, else the next opening hour in the client's timezone."""
+    when it may go now, else the next opening hour in the client's timezone,
+    plus a random moment within ``FOLLOW_UP_OPENING_SPREAD_MINUTES``."""
     window = follow_up_window(get_settings().follow_up_hours)
     if window is None:
         return None
@@ -265,6 +267,9 @@ def next_opening(now: datetime, timezone_name: str | None) -> datetime | None:
     opening = local.replace(hour=start, minute=0, second=0, microsecond=0)
     if local.hour >= end:
         opening += timedelta(days=1)
+    # Never spread past the end of the window, or the message would wait a day more.
+    spread = min(max(get_settings().follow_up_opening_spread_minutes, 0), (end - start) * 60)
+    opening += timedelta(seconds=random.uniform(0, spread * 60))
     return opening.astimezone(timezone.utc)
 
 

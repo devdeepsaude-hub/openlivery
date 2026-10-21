@@ -489,6 +489,20 @@ def test_follow_ups_keep_to_the_daytime_of_the_client(monkeypatch):
     assert Settings(follow_up_hours=" 8-20 ").follow_up_hours == "8-20"
 
 
+def test_a_morning_follow_up_goes_out_at_a_broken_time(monkeypatch):
+    monkeypatch.setattr(get_settings(), "follow_up_hours", "8-20")
+    monkeypatch.setattr(get_settings(), "follow_up_opening_spread_minutes", 30)
+    night = datetime(2026, 10, 21, 4, 27, tzinfo=timezone.utc)                      # 01:27 in São Paulo
+    morning = datetime(2026, 10, 21, 11, 0, tzinfo=timezone.utc)                    # 08:00
+    openings = {follow_ups.next_opening(night, "America/Sao_Paulo") for _ in range(50)}
+    assert all(morning <= opening < morning + timedelta(minutes=30) for opening in openings)
+    assert len(openings) > 40                    # spread out, not a single 08:00
+    # A window shorter than the spread keeps the message inside it.
+    monkeypatch.setattr(get_settings(), "follow_up_hours", "8-9")
+    monkeypatch.setattr(get_settings(), "follow_up_opening_spread_minutes", 90)
+    assert all(follow_ups.next_opening(night, "America/Sao_Paulo") <= morning + timedelta(hours=1) for _ in range(50))
+
+
 def test_a_follow_up_due_at_night_waits_for_the_morning(setup, monkeypatch):
     s = setup
     configure(s)

@@ -115,6 +115,10 @@ class Settings(BaseSettings):
     # waits for 08:00. Empty sends them at any hour. Replies to a contact who
     # writes are never held back.
     follow_up_hours: str = ""
+    # A follow-up held for the night goes out at a random moment within this
+    # many minutes after the opening hour (08:13:27 rather than 08:00:00), so
+    # the morning messages do not all land on the hour. 0 sends them at it.
+    follow_up_opening_spread_minutes: int = 0
 
     @field_validator("follow_up_hours")
     @classmethod
