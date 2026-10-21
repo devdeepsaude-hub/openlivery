@@ -125,6 +125,12 @@ class Settings(BaseSettings):
     # sends nothing; ESCALATION_WEBHOOK_SECRET goes as a Bearer token.
     escalation_webhook_url: str = ""
     escalation_webhook_secret: str = ""
+    # An outside booking service the portal shows beside a conversation: the
+    # contact's bookings, with Cancel and Mark as paid (see
+    # app/services/bookings.py for what it must answer). BOOKINGS_TOKEN goes
+    # as a Bearer token. Empty hides the panel.
+    bookings_url: str = ""
+    bookings_token: str = ""
 
     @field_validator("follow_up_hours")
     @classmethod

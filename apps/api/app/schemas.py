@@ -495,6 +495,25 @@ class ConversationSummaryOut(BaseModel):
     stale: bool = False
 
 
+class BookingOut(BaseModel):
+    """One booking from the outside booking service, its text in the business's language."""
+
+    id: str
+    title: str
+    when: str = ""
+    status: str = ""
+    detail: str | None = None
+    can_cancel: bool = False
+    can_mark_paid: bool = False
+
+
+class BookingsOut(BaseModel):
+    """The contact's bookings; ``enabled`` is false when no booking service is set up."""
+
+    enabled: bool
+    bookings: list[BookingOut] = []
+
+
 class ConversationSummaryRequest(BaseModel):
     # The language the summary is written in: the reader's interface language.
     language: Literal["es", "en", "pt"] = "es"
