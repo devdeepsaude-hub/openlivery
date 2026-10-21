@@ -22,7 +22,7 @@ type channelActions interface {
 	connect(ctx context.Context, channelID string) error
 	disconnect(ctx context.Context, channelID string) error
 	send(ctx context.Context, channelID, remoteJID, text string, media *outboundMedia, quoteExternalID string) (string, error)
-	read(ctx context.Context, channelID, remoteJID string, messageIDs []string, typing bool) error
+	read(ctx context.Context, channelID, remoteJID string, messageIDs []string, typing, paused bool) error
 	react(ctx context.Context, channelID, remoteJID, targetID string, targetFromMe bool, emoji string) error
 }
 
@@ -40,8 +40,8 @@ func (a managerActions) send(ctx context.Context, channelID, remoteJID, text str
 	return a.manager.sendMessage(ctx, channelID, remoteJID, text, media, quoteExternalID)
 }
 
-func (a managerActions) read(ctx context.Context, channelID, remoteJID string, messageIDs []string, typing bool) error {
-	return a.manager.signalRead(ctx, channelID, remoteJID, messageIDs, typing)
+func (a managerActions) read(ctx context.Context, channelID, remoteJID string, messageIDs []string, typing, paused bool) error {
+	return a.manager.signalRead(ctx, channelID, remoteJID, messageIDs, typing, paused)
 }
 
 func (a managerActions) react(ctx context.Context, channelID, remoteJID, targetID string, targetFromMe bool, emoji string) error {
@@ -63,6 +63,7 @@ type readPayload struct {
 	RemoteJID  string   `json:"remote_jid"`
 	MessageIDs []string `json:"message_ids"`
 	Typing     bool     `json:"typing"`
+	Paused     bool     `json:"paused"`
 }
 
 type reactPayload struct {
@@ -161,7 +162,7 @@ func newHandler(actions channelActions, bridgeToken string) http.Handler {
 				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Invalid read request"})
 				return
 			}
-			if err := actions.read(r.Context(), channelID, payload.RemoteJID, payload.MessageIDs, payload.Typing); err != nil {
+			if err := actions.read(r.Context(), channelID, payload.RemoteJID, payload.MessageIDs, payload.Typing, payload.Paused); err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 				return
 			}

@@ -19,6 +19,7 @@ type fakeActions struct {
 	sentQuote    string
 	readIDs      []string
 	readTyping   bool
+	readPaused   bool
 	reactedID    string
 	reactedEmoji string
 	reactedOwn   bool
@@ -39,8 +40,8 @@ func (f *fakeActions) send(_ context.Context, channelID, remoteJID, text string,
 	return "WAMID1", nil
 }
 
-func (f *fakeActions) read(_ context.Context, _, _ string, messageIDs []string, typing bool) error {
-	f.readIDs, f.readTyping = messageIDs, typing
+func (f *fakeActions) read(_ context.Context, _, _ string, messageIDs []string, typing, paused bool) error {
+	f.readIDs, f.readTyping, f.readPaused = messageIDs, typing, paused
 	return nil
 }
 
@@ -149,8 +150,13 @@ func TestReadAndReactDispatch(t *testing.T) {
 
 	res := request(t, handler, http.MethodPost, "/channels/abc/read", testToken,
 		`{"remote_jid": "1@s.whatsapp.net", "message_ids": ["A", "B"], "typing": true}`)
-	if res.Code != http.StatusOK || len(actions.readIDs) != 2 || !actions.readTyping {
+	if res.Code != http.StatusOK || len(actions.readIDs) != 2 || !actions.readTyping || actions.readPaused {
 		t.Fatalf("read: code %d actions %+v", res.Code, actions)
+	}
+	res = request(t, handler, http.MethodPost, "/channels/abc/read", testToken,
+		`{"remote_jid": "1@s.whatsapp.net", "message_ids": ["A"], "paused": true}`)
+	if res.Code != http.StatusOK || actions.readTyping || !actions.readPaused {
+		t.Fatalf("pause: code %d actions %+v", res.Code, actions)
 	}
 	if res := request(t, handler, http.MethodPost, "/channels/abc/read", testToken, `{"remote_jid": "1@s.whatsapp.net", "message_ids": []}`); res.Code != http.StatusBadRequest {
 		t.Fatalf("read without ids: got %d", res.Code)

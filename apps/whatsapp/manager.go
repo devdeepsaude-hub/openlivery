@@ -589,9 +589,10 @@ func (m *manager) addressFor(channelID, remoteJID, messageID string) (chat, send
 	return chat, chat, nil
 }
 
-// signalRead blue-ticks the given messages and optionally shows "typing...";
-// WhatsApp clears the indicator when the reply is sent or after a while.
-func (m *manager) signalRead(ctx context.Context, channelID, remoteJID string, messageIDs []string, typing bool) error {
+// signalRead blue-ticks the given messages and optionally shows "typing...",
+// or takes it down (paused) as a person who stops to think; WhatsApp also
+// clears the indicator when the reply is sent or after a while.
+func (m *manager) signalRead(ctx context.Context, channelID, remoteJID string, messageIDs []string, typing, paused bool) error {
 	runtime := m.runtime(channelID)
 	if runtime == nil || runtime.stopped() {
 		return errors.New("WhatsApp is not connected")
@@ -608,7 +609,12 @@ func (m *manager) signalRead(ctx context.Context, channelID, remoteJID string, m
 	if err := runtime.client.MarkRead(ctx, ids, time.Now(), chat, sender); err != nil {
 		return err
 	}
-	if typing {
+	switch {
+	case paused:
+		if err := runtime.client.SendChatPresence(ctx, chat, types.ChatPresencePaused, types.ChatPresenceMediaText); err != nil {
+			m.log.Errorf("channel %s: could not take the typing indicator down: %v", channelID, err)
+		}
+	case typing:
 		if err := runtime.client.SendChatPresence(ctx, chat, types.ChatPresenceComposing, types.ChatPresenceMediaText); err != nil {
 			m.log.Errorf("channel %s: could not send the typing indicator: %v", channelID, err)
 		}

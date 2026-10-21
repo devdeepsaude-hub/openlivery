@@ -256,3 +256,72 @@ def test_a_list_stays_in_one_message(monkeypatch):
     )
     reply = f"{prices}\n\nQual faz mais sentido pra você?"
     assert inbound_service.split_reply(reply) == [prices, "Qual faz mais sentido pra você?"]
+
+
+PIX = (
+    "00020126730014br.gov.bcb.pix0114588086130001300233Ana 5521999990000 DEEPR1A2B3C5204000053039865406135.00"
+    "5802BR5921DEEP SAUDE PSICOLOGIA6007NITEROI62150511DEEPR1A2B3C63041D3A"
+)
+
+
+def test_a_pix_code_goes_out_alone(monkeypatch):
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "reply_max_messages", 3)
+    # The reply that once arrived as one message: its line ending in ":" pulled
+    # the code in, and the limit then appended the request for the receipt.
+    reply = (
+        "Reservei o horário com a Erika, quinta, 22/10, às 16h30.\n\n"
+        "Esse link abre o QR code e o botão de copiar:\nhttps://atendimento.example/pix/abc\n\n"
+        f"Se preferir, aqui está o código copia e cola:\n\n{PIX}\n\n"
+        "Depois de pagar, me manda o comprovante por aqui?"
+    )
+    assert inbound_service.split_reply(reply) == [
+        "Reservei o horário com a Erika, quinta, 22/10, às 16h30.\n\n"
+        "Esse link abre o QR code e o botão de copiar:\nhttps://atendimento.example/pix/abc\n\n"
+        "Se preferir, aqui está o código copia e cola:",
+        PIX,
+        "Depois de pagar, me manda o comprovante por aqui?",
+    ]
+    # Sharing a paragraph with its introduction, in backticks, and followed by
+    # a line that looks like a list item: still alone, and copied clean.
+    reply = f"Código Pix:\n`{PIX}`\n_Depois de pagar, me manda o comprovante._"
+    assert inbound_service.split_reply(reply) == ["Código Pix:", PIX, "_Depois de pagar, me manda o comprovante._"]
+    # Codes are never merged to respect the limit.
+    assert inbound_service.split_reply(f"{PIX}\n\n{PIX}\n\n{PIX}\n\nPronto.") == [PIX, PIX, PIX, "Pronto."]
+
+
+def test_a_pasted_code_does_not_take_typing_time(monkeypatch):
+    from app.config import get_settings
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "typing_chars_per_second", 6)
+    monkeypatch.setattr(settings, "typing_max_seconds", 25)
+    assert inbound_service.typing_pause_seconds(PIX, 0) == 2.0
+    assert inbound_service.typing_pause_seconds("x" * len(PIX), 0) == 25.0
+
+
+def test_typing_sometimes_pauses_without_changing_the_total(monkeypatch):
+    from app.config import get_settings
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "typing_pause_chance", 0)
+    assert inbound_service.typing_plan(20) == [(True, 20)]
+    assert inbound_service.typing_plan(0) == []
+    monkeypatch.setattr(settings, "typing_pause_chance", 1)
+    assert inbound_service.typing_plan(5) == [(True, 5)]         # too short to stop midway
+    for _ in range(50):
+        plan = inbound_service.typing_plan(20)
+        assert [typing for typing, _ in plan] == [True, False, True]
+        assert 2 <= plan[1][1] <= 4 and all(length > 0 for _, length in plan)
+        assert abs(sum(length for _, length in plan) - 20) < 1e-9
+
+
+def test_a_pause_takes_typing_down_and_puts_it_back(monkeypatch):
+    monkeypatch.setattr(inbound_service, "typing_plan", lambda seconds: [(True, 0.01), (False, 0.01), (True, 0.01)])
+    typing, paused = AsyncMock(), AsyncMock()
+    monkeypatch.setattr(inbound_service, "_signal_read_and_typing", typing)
+    monkeypatch.setattr(inbound_service, "_signal_typing_paused", paused)
+    asyncio.run(inbound_service._keep_typing(None, None, ["wa-1"], 0.03))
+    paused.assert_awaited_once()
+    typing.assert_awaited_once()      # back on after the pause

@@ -8,6 +8,7 @@ taken over. The caller is responsible for actually delivering the reply.
 
 import asyncio
 import random
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -394,6 +395,11 @@ async def _signal_read_and_typing(db: Session, conversation: Conversation, messa
     await signal_channel_read(db, conversation, message_external_ids, typing=True)
 
 
+async def _signal_typing_paused(db: Session, conversation: Conversation, message_external_ids: list[str]) -> None:
+    """Take "typing..." down for a moment, as a person who stops to think."""
+    await signal_channel_read(db, conversation, message_external_ids, typing=False, paused=True)
+
+
 async def _reply_with_ai(db: Session, channel, conversation: Conversation, retrieval_query: str,
                          *, expected_last_message_id: uuid.UUID | None = None) -> InboundResult:
     """Generate and store the AI reply for the conversation's current history.
@@ -638,53 +644,110 @@ _TYPING_REFRESH_SECONDS = 8.0
 
 # Paragraphs that continue a list rather than start a new message.
 _LIST_STARTS = ("✨", "-", "•", "*", "_", "1.", "2.", "3.", "4.", "5.")
+# A Pix "copia e cola" code (an EMV BR Code). It is copied whole, so it goes
+# out alone: anything sharing its message would have to be edited out.
+_PIX_CODE = re.compile(r"^000201\S*br\.gov\.bcb\.pix", re.IGNORECASE)
+# A pasted code shows "typing..." this long at most, not the time to type it.
+_PASTE_SECONDS = 2.0
+
+
+def is_copy_code(text: str) -> bool:
+    return bool(_PIX_CODE.match(text))
+
+
+def _paragraphs(reply: str) -> list[str]:
+    """The reply's paragraphs, with each copy code on a line of its own pulled
+    out as a paragraph (and freed from the backticks a model may wrap it in)."""
+    paragraphs: list[str] = []
+    for part in reply.split("\n\n"):
+        lines: list[str] = []
+        for line in part.split("\n"):
+            code = line.strip().strip("`").strip()
+            if is_copy_code(code):
+                paragraphs.extend(filter(None, ["\n".join(lines).strip(), code]))
+                lines = []
+            else:
+                lines.append(line)
+        paragraphs.extend(filter(None, ["\n".join(lines).strip()]))
+    return paragraphs
 
 
 def split_reply(reply: str) -> list[str]:
     """The reply as the WhatsApp messages a person would send: one per
-    paragraph, up to ``REPLY_MAX_MESSAGES`` (the rest stays in the last one).
-    One message when the setting is 1 or less."""
+    paragraph, up to ``REPLY_MAX_MESSAGES`` (past it, neighbouring paragraphs
+    travel together, the last ones first). A copy code always goes alone. One
+    message when the setting is 1 or less."""
     limit = int(get_settings().reply_max_messages or 1)
     paragraphs: list[str] = []
-    for part in (part.strip() for part in reply.split("\n\n")):
-        if not part:
-            continue
+    for part in _paragraphs(reply):
         # A list and the line that introduces it are one message, as a
         # person would paste them: a price table must not arrive in pieces.
-        if paragraphs and (paragraphs[-1].endswith(":") or part.startswith(_LIST_STARTS)):
+        joins = paragraphs and (paragraphs[-1].endswith(":") or part.startswith(_LIST_STARTS))
+        if joins and not is_copy_code(paragraphs[-1]) and not is_copy_code(part):
             paragraphs[-1] = f"{paragraphs[-1]}\n\n{part}"
         else:
             paragraphs.append(part)
     if limit <= 1 or len(paragraphs) <= 1:
         return [reply]
-    if len(paragraphs) <= limit:
-        return paragraphs
-    head, tail = paragraphs[: limit - 1], paragraphs[limit - 1 :]
-    return [*head, "\n\n".join(tail)]
+    while len(paragraphs) > limit:
+        pair = next((index for index in range(len(paragraphs) - 2, -1, -1)
+                     if not is_copy_code(paragraphs[index]) and not is_copy_code(paragraphs[index + 1])), None)
+        if pair is None:
+            break
+        paragraphs[pair:pair + 2] = [f"{paragraphs[pair]}\n\n{paragraphs[pair + 1]}"]
+    return paragraphs
 
 
 def typing_pause_seconds(reply: str, already_waited: float) -> float:
     """How much longer to show "typing..." before a reply goes out, so a long
     answer does not land a second after the short wait: the time a person
     would take to type it (``TYPING_CHARS_PER_SECOND``, capped at
-    ``TYPING_MAX_SECONDS``) minus what generating it already took. Zero when
-    the setting is off."""
+    ``TYPING_MAX_SECONDS``, a moment for a pasted code) minus what generating
+    it already took. Zero when the setting is off."""
     settings = get_settings()
     pace = float(settings.typing_chars_per_second or 0)
     if pace <= 0:
         return 0.0
     wanted = min(len(reply) / pace, float(settings.typing_max_seconds))
+    if is_copy_code(reply):
+        wanted = min(wanted, _PASTE_SECONDS)
     return max(0.0, wanted - already_waited)
 
 
+# "typing..." only pauses when it would last at least this long.
+_PAUSE_MIN_TYPING_SECONDS = 8.0
+
+
+def typing_plan(seconds: float) -> list[tuple[bool, float]]:
+    """How "typing..." spends ``seconds``, as (typing, length) stretches: on
+    the whole time or, now and then in a long one (``TYPING_PAUSE_CHANCE``),
+    on, off for a few seconds and on again. The total never changes."""
+    if seconds <= 0:
+        return []
+    chance = float(get_settings().typing_pause_chance or 0)
+    if seconds < _PAUSE_MIN_TYPING_SECONDS or random.random() >= chance:
+        return [(True, seconds)]
+    pause = random.uniform(2.0, 4.0)
+    before = random.uniform(0.3, 0.6) * (seconds - pause)
+    return [(True, before), (False, pause), (True, seconds - pause - before)]
+
+
 async def _keep_typing(db: Session, conversation: Conversation, read_ids: list[str], seconds: float) -> None:
-    """Hold the reply for ``seconds`` with "typing..." showing the whole time."""
-    while seconds > 0:
-        step = min(seconds, _TYPING_REFRESH_SECONDS)
-        await asyncio.sleep(step)
-        seconds -= step
-        if seconds > 0:
+    """Hold the reply for ``seconds`` with "typing..." following ``typing_plan``."""
+    for index, (typing, length) in enumerate(typing_plan(seconds)):
+        if not typing:
+            await _signal_typing_paused(db, conversation, read_ids)
+            await asyncio.sleep(length)
+            continue
+        if index:
+            # Back to typing after the pause.
             await _signal_read_and_typing(db, conversation, read_ids)
+        while length > 0:
+            step = min(length, _TYPING_REFRESH_SECONDS)
+            await asyncio.sleep(step)
+            length -= step
+            if length > 0:
+                await _signal_read_and_typing(db, conversation, read_ids)
 
 
 def reply_delay_seconds(agent: Agent) -> float:

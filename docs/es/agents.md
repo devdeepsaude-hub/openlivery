@@ -136,6 +136,10 @@ una persona nunca se cierra automáticamente.
 por regla o nada para que lo redacte la IA (`first_text`, `second_text`,
 `close_text`), `channels`, `enabled` y `resolve_enabled`. Un temporizador envía
 lo pendiente cada `FOLLOW_UP_SWEEP_SECONDS` (60); con `0` se desactiva.
+`FOLLOW_UP_HOURS` (por ejemplo `8-20`) limita los mensajes a esas horas de la
+zona horaria del cliente: el que vence de noche espera a la mañana, y el
+siguiente guarda su distancia. Las respuestas a un cliente que escribe nunca
+esperan.
 
 ## El conocimiento en el prompt del sistema
 

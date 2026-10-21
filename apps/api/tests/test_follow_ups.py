@@ -2,15 +2,16 @@
 
 import asyncio
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy import select
 
-from app.config import get_settings
-from app.models import Agent, Conversation, Message, SocialChannel, WhatsAppChannel, now_utc
+from app.config import Settings, get_settings
+from app.models import Agent, Client, Conversation, Message, SocialChannel, WhatsAppChannel, now_utc
 from app.routers import widget as widget_router
 from app.security import encrypt_secret
 from app.services import follow_ups, social_delivery, social_graph, social_inbound, social_worker
@@ -469,3 +470,52 @@ def test_a_social_closing_message_is_delivered_before_the_case_ends(setup, monke
     sweep()
     with TestingSession() as db:
         assert db.get(Conversation, cid).status == "resolved"
+
+
+def test_follow_ups_keep_to_the_daytime_of_the_client(monkeypatch):
+    monkeypatch.setattr(get_settings(), "follow_up_hours", "")
+    assert follow_ups.next_opening(datetime(2026, 10, 21, 4, 27, tzinfo=timezone.utc), "America/Sao_Paulo") is None
+    monkeypatch.setattr(get_settings(), "follow_up_hours", "8-20")
+    morning = datetime(2026, 10, 21, 11, 0, tzinfo=timezone.utc)                    # 08:00 in São Paulo
+    assert follow_ups.next_opening(datetime(2026, 10, 21, 4, 27, tzinfo=timezone.utc), "America/Sao_Paulo") == morning
+    assert follow_ups.next_opening(datetime(2026, 10, 20, 23, 30, tzinfo=timezone.utc), "America/Sao_Paulo") == morning
+    assert follow_ups.next_opening(datetime(2026, 10, 21, 22, 59, tzinfo=timezone.utc), "America/Sao_Paulo") is None
+    assert follow_ups.next_opening(datetime(2026, 10, 21, 23, 0, tzinfo=timezone.utc), "America/Sao_Paulo") == morning + timedelta(days=1)
+    # An unknown timezone falls back to UTC rather than failing the sweep.
+    assert follow_ups.next_opening(datetime(2026, 10, 21, 7, 0, tzinfo=timezone.utc), "Mars/Base") == datetime(2026, 10, 21, 8, 0, tzinfo=timezone.utc)
+    for wrong in ("20-8", "8", "8-25", "a-b"):
+        with pytest.raises(ValidationError):
+            Settings(follow_up_hours=wrong)
+    assert Settings(follow_up_hours=" 8-20 ").follow_up_hours == "8-20"
+
+
+def test_a_follow_up_due_at_night_waits_for_the_morning(setup, monkeypatch):
+    s = setup
+    configure(s)
+    incoming(s)
+    monkeypatch.setattr(get_settings(), "follow_up_hours", "8-20")
+    night = datetime(2026, 10, 21, 4, 27, tzinfo=timezone.utc)      # 01:27 in São Paulo, an hour after the reply
+    with TestingSession() as db:
+        row = conversation_of(s, db)
+        db.get(Client, row.client_id).timezone = "America/Sao_Paulo"
+        back = row.follow_up_anchor_at - (night - timedelta(minutes=61))
+        row.follow_up_anchor_at -= back
+        row.follow_up_due_at -= back
+        for message in db.scalars(select(Message).where(Message.conversation_id == row.id)):
+            message.created_at -= back
+        db.commit()
+
+    monkeypatch.setattr(follow_ups, "now_utc", lambda: night)
+    sweep()
+    s.send.assert_not_awaited()
+    s.nudge.assert_not_awaited()
+    morning = datetime(2026, 10, 21, 11, 0, tzinfo=timezone.utc)    # 08:00 in São Paulo
+    assert state(s)[1:3] == (0, morning)
+
+    monkeypatch.setattr(follow_ups, "now_utc", lambda: morning)
+    sweep()
+    s.send.assert_awaited_once()
+    # Told the time that really went by, not the hour it was due.
+    assert "7 hours and 34 minutes have passed" in s.nudge.await_args.args[4][-1]["content"]
+    # The second follow-up keeps its two hours from the first instead of going out at once.
+    assert state(s)[1:3] == (1, morning + timedelta(minutes=120))

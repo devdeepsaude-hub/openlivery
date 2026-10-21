@@ -128,7 +128,10 @@ automatically.
 (`first_minutes`, `second_minutes`, `close_minutes`), a custom message per rule
 or nothing to let the AI write it (`first_text`, `second_text`, `close_text`),
 `channels`, `enabled` and `resolve_enabled`. A timer sends what is due every
-`FOLLOW_UP_SWEEP_SECONDS` (60); `0` switches it off.
+`FOLLOW_UP_SWEEP_SECONDS` (60); `0` switches it off. `FOLLOW_UP_HOURS` (for
+example `8-20`) keeps the messages to those hours of the client's timezone: one
+that falls due at night waits for the morning, and the next keeps its distance
+from it. Replies to a customer who writes are never held back.
 
 ## Business hours and future requests
 

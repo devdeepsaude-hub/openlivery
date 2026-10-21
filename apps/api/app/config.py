@@ -1,7 +1,17 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def follow_up_window(value: str) -> tuple[int, int] | None:
+    """``FOLLOW_UP_HOURS`` as (start, end) hours, or None when empty or malformed."""
+    start, dash, end = value.strip().partition("-")
+    if not dash or not start.strip().isdigit() or not end.strip().isdigit():
+        return None
+    start_hour, end_hour = int(start), int(end)
+    return (start_hour, end_hour) if 0 <= start_hour < end_hour <= 24 else None
 
 
 APP_DIR = Path(__file__).resolve().parents[1]   # apps/api
@@ -66,6 +76,9 @@ class Settings(BaseSettings):
     # never longer than TYPING_MAX_SECONDS. Counts on top of the reply delay.
     typing_chars_per_second: float = 0
     typing_max_seconds: float = 20
+    # Chance (0 to 1) that a long "typing..." stops for a few seconds midway
+    # and starts again, the way a person stops to think. 0 never pauses.
+    typing_pause_chance: float = 0
     # Debounced WhatsApp replies go out as up to this many messages, one per
     # paragraph, each after its own "typing..."; 1 sends the reply whole.
     reply_max_messages: int = 1
@@ -93,6 +106,19 @@ class Settings(BaseSettings):
     # How often due inactivity follow-ups are sent, in seconds. They are an
     # agent setting; this only paces the timer that sends them. 0 disables it.
     follow_up_sweep_seconds: float = 60.0
+    # Local hours, in the client's timezone, when follow-ups may go out:
+    # "8-20" sends them from 08:00 to 19:59, and one that falls due at night
+    # waits for 08:00. Empty sends them at any hour. Replies to a contact who
+    # writes are never held back.
+    follow_up_hours: str = ""
+
+    @field_validator("follow_up_hours")
+    @classmethod
+    def _check_follow_up_hours(cls, value: str) -> str:
+        value = value.strip()
+        if value and not follow_up_window(value):
+            raise ValueError('FOLLOW_UP_HOURS must look like "8-20": a start hour before an end hour, from 0 to 24')
+        return value
 
     # Push notifications for the mobile app. "none" (the default) sends nothing
     # and needs no account with anyone; "webhook" POSTs each event to

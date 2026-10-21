@@ -175,23 +175,25 @@ def resolve_quote(
 
 
 async def signal_channel_read(
-    db: Session, conversation: Conversation, message_external_ids: list[str], *, typing: bool
+    db: Session, conversation: Conversation, message_external_ids: list[str], *, typing: bool, paused: bool = False
 ) -> None:
     """Blue-tick the given visitor messages on WhatsApp, optionally showing the
-    typing indicator afterwards. Best-effort on both channels: reading is a
-    gesture, never worth failing the caller over."""
+    typing indicator afterwards, or taking it down (``paused``). Best-effort on
+    both channels: reading is a gesture, never worth failing the caller over.
+    The Cloud API has no way to take the indicator down, so a pause is skipped there."""
     ids = [item for item in message_external_ids if item]
     if not ids or not conversation.external_chat_id:
         return
     if conversation.channel == "whatsapp" and conversation.whatsapp_channel_id:
+        payload = {"remote_jid": conversation.external_chat_id, "message_ids": ids, "typing": typing}
+        if paused:
+            payload["paused"] = True
         try:
-            await bridge_command(
-                "POST",
-                f"/channels/{conversation.whatsapp_channel_id}/read",
-                {"remote_jid": conversation.external_chat_id, "message_ids": ids, "typing": typing},
-            )
+            await bridge_command("POST", f"/channels/{conversation.whatsapp_channel_id}/read", payload)
         except HTTPException:
             pass
+        return
+    if paused:
         return
     if conversation.channel == "whatsapp_cloud" and conversation.whatsapp_cloud_channel_id:
         channel = db.get(WhatsAppCloudChannel, conversation.whatsapp_cloud_channel_id)

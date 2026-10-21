@@ -2,6 +2,8 @@
 read/typing signal, on the bridge channel (the Cloud API variants live in
 test_whatsapp_cloud.py)."""
 
+import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
@@ -120,6 +122,20 @@ def test_bridge_read_signal_fires_before_the_ai_reply(authenticated_client: Test
     method, path, payload = bridge.await_args.args
     assert method == "POST" and path == f"/channels/{channel_id}/read"
     assert payload == {"remote_jid": "573001112233@s.whatsapp.net", "message_ids": ["wa-in-1"], "typing": True}
+
+
+def test_a_typing_pause_reaches_the_bridge_and_skips_the_cloud_api(monkeypatch):
+    bridge = AsyncMock(return_value={})
+    monkeypatch.setattr(whatsapp_service, "bridge_command", bridge)
+    chat = "573001112233@s.whatsapp.net"
+    on_bridge = SimpleNamespace(channel="whatsapp", whatsapp_channel_id="ch-1", external_chat_id=chat)
+    asyncio.run(whatsapp_service.signal_channel_read(None, on_bridge, ["wa-in-1"], typing=False, paused=True))
+    assert bridge.await_args.args[2] == {"remote_jid": chat, "message_ids": ["wa-in-1"], "typing": False, "paused": True}
+
+    # Meta cannot take "typing..." down: nothing is called, not even the database.
+    on_cloud = SimpleNamespace(channel="whatsapp_cloud", whatsapp_channel_id=None, whatsapp_cloud_channel_id="ch-2", external_chat_id=chat)
+    asyncio.run(whatsapp_service.signal_channel_read(None, on_cloud, ["wamid-1"], typing=False, paused=True))
+    bridge.assert_awaited_once()
 
 
 def test_operator_reaction_on_the_bridge_channel(authenticated_client: TestClient, monkeypatch):

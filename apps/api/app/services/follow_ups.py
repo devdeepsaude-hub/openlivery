@@ -13,6 +13,10 @@ ends the silence stops the clock where it happens (``cancel_follow_up`` in
 ``conversation_state``), and ``run_due`` looks again before anything leaves, so
 a path that forgets to stop it still cannot send a message nobody wanted.
 
+``FOLLOW_UP_HOURS`` keeps the messages to the daytime of the client's
+timezone: a step that falls due at night waits for the morning, and the steps
+after it keep their distance from it rather than following at once.
+
 The same clock carries a pending resolution. A case the agent settled, or one
 whose closing message is still on its way out, ends a short while later rather
 than at once: the last message is delivered while the conversation is still
@@ -24,12 +28,14 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from ..config import follow_up_window, get_settings
 from ..models import Agent, Conversation, Message, now_utc
 from .ai import Completion, chat_completion
 from .availability import agent_available
@@ -242,6 +248,26 @@ def after_agent_reply(conversation: Conversation, agent: Agent, resolution=None,
         arm(conversation, agent)
 
 
+def next_opening(now: datetime, timezone_name: str | None) -> datetime | None:
+    """When a follow-up due ``now`` may go out under ``FOLLOW_UP_HOURS``: None
+    when it may go now, else the next opening hour in the client's timezone."""
+    window = follow_up_window(get_settings().follow_up_hours)
+    if window is None:
+        return None
+    start, end = window
+    try:
+        zone = ZoneInfo(timezone_name or "UTC")
+    except (ZoneInfoNotFoundError, ValueError):
+        zone = ZoneInfo("UTC")
+    local = now.astimezone(zone)
+    if start <= local.hour < end:
+        return None
+    opening = local.replace(hour=start, minute=0, second=0, microsecond=0)
+    if local.hour >= end:
+        opening += timedelta(days=1)
+    return opening.astimezone(timezone.utc)
+
+
 def _elapsed(minutes: int, lang: str) -> str:
     words = _TEXT[lang]
     hours, rest = divmod(minutes, 60)
@@ -293,9 +319,9 @@ def _reachable(db: Session, conversation: Conversation) -> bool:
     return True
 
 
-async def _compose(db: Session, conversation: Conversation, agent: Agent, step: Step) -> Completion | None:
-    """Ask the model for the message, with the thread it continues. No tools:
-    a follow-up only speaks."""
+async def _compose(db: Session, conversation: Conversation, agent: Agent, step: Step, elapsed: int) -> Completion | None:
+    """Ask the model for the message, with the thread it continues, told that
+    ``elapsed`` minutes went by. No tools: a follow-up only speaks."""
     credentials = resolve_agent_credentials(db, agent)
     if not credentials or not agent.model.strip():
         return None
@@ -312,7 +338,7 @@ async def _compose(db: Session, conversation: Conversation, agent: Agent, step: 
     if contact:
         system += "\n\n" + contact
     system += "\n\n" + text[step.kind]
-    cue = text["cue_close" if step.kind == "close" else "cue"].format(elapsed=_elapsed(step.minutes, lang))
+    cue = text["cue_close" if step.kind == "close" else "cue"].format(elapsed=_elapsed(elapsed, lang))
     messages = [
         {"role": "system", "content": system},
         *llm_turns(list(reversed(history)), agent.prompt_language),
@@ -396,14 +422,23 @@ async def _run_step(db: Session, conversation: Conversation, now: datetime) -> N
         conversation.follow_up_due_at = due
         db.commit()
         return
+    opening = next_opening(now, agent.client.timezone)
+    if opening is not None:
+        # Nobody gets a follow-up at night: it waits for the morning.
+        conversation.follow_up_due_at = opening
+        db.commit()
+        return
     conversation.follow_up_claimed_until = now + _LEASE
     db.commit()
 
+    # Late: held for the night, or the sweep was down for a while.
+    late = now - due > _LEASE
     completion = None
     reachable = _reachable(db, conversation)
     if reachable and not step.text:
+        elapsed = int((now - anchor).total_seconds() // 60) if late else step.minutes
         try:
-            completion = await _compose(db, conversation, agent, step)
+            completion = await _compose(db, conversation, agent, step, elapsed)
         except HTTPException:
             completion = None
     db.refresh(conversation)
@@ -422,7 +457,13 @@ async def _run_step(db: Session, conversation: Conversation, now: datetime) -> N
     upcoming = index + 1
     conversation.follow_up_step = upcoming
     conversation.follow_up_claimed_until = None
-    conversation.follow_up_due_at = anchor + timedelta(minutes=steps[upcoming].minutes) if upcoming < len(steps) else None
+    conversation.follow_up_due_at = None
+    if upcoming < len(steps):
+        conversation.follow_up_due_at = anchor + timedelta(minutes=steps[upcoming].minutes)
+        if late:
+            # The next step keeps its distance from this one instead of following at once.
+            gap = timedelta(minutes=steps[upcoming].minutes - step.minutes)
+            conversation.follow_up_due_at = max(conversation.follow_up_due_at, now + gap)
     db.commit()
 
     if step.text:
