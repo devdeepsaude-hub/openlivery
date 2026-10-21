@@ -517,5 +517,29 @@ def test_a_follow_up_due_at_night_waits_for_the_morning(setup, monkeypatch):
     s.send.assert_awaited_once()
     # Told the time that really went by, not the hour it was due.
     assert "7 hours and 34 minutes have passed" in s.nudge.await_args.args[4][-1]["content"]
-    # The second follow-up keeps its two hours from the first instead of going out at once.
-    assert state(s)[1:3] == (1, morning + timedelta(minutes=120))
+    # The second follow-up does not go out at once: it waits the first step's
+    # delay (60), shorter than the two hours between the steps.
+    assert state(s)[1:3] == (1, morning + timedelta(minutes=60))
+
+
+def test_after_a_night_the_next_follow_up_still_goes_out_the_same_day(setup, monkeypatch):
+    s = setup
+    # The agent's own schedule: 3 hours, then 21 hours, no closing message.
+    configure(s, first_minutes=180, second_minutes=1260, close_minutes=None)
+    incoming(s)
+    monkeypatch.setattr(get_settings(), "follow_up_hours", "8-20")
+    reply = datetime(2026, 10, 22, 1, 0, tzinfo=timezone.utc)       # 22:00 in São Paulo
+    with TestingSession() as db:
+        row = conversation_of(s, db)
+        db.get(Client, row.client_id).timezone = "America/Sao_Paulo"
+        back = row.follow_up_anchor_at - reply
+        row.follow_up_anchor_at -= back
+        row.follow_up_due_at -= back
+        db.commit()
+    morning = datetime(2026, 10, 22, 11, 0, tzinfo=timezone.utc)    # 08:00, the first one held from 01:00
+    for now in (reply + timedelta(minutes=181), morning):
+        monkeypatch.setattr(follow_ups, "now_utc", lambda now=now: now)
+        sweep()
+    s.send.assert_awaited_once()
+    # 21 hours after the reply, 19:00 the same evening: not the next morning.
+    assert state(s)[1:3] == (1, reply + timedelta(minutes=1260))

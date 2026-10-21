@@ -461,8 +461,10 @@ async def _run_step(db: Session, conversation: Conversation, now: datetime) -> N
     if upcoming < len(steps):
         conversation.follow_up_due_at = anchor + timedelta(minutes=steps[upcoming].minutes)
         if late:
-            # The next step keeps its distance from this one instead of following at once.
-            gap = timedelta(minutes=steps[upcoming].minutes - step.minutes)
+            # The next step does not follow this one at once: it waits the gap
+            # between the two, but no longer than the first step's delay, so a
+            # night held back does not push it a whole day further.
+            gap = timedelta(minutes=min(steps[upcoming].minutes - step.minutes, steps[0].minutes))
             conversation.follow_up_due_at = max(conversation.follow_up_due_at, now + gap)
     db.commit()
 
