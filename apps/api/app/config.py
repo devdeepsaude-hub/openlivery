@@ -119,6 +119,12 @@ class Settings(BaseSettings):
     # many minutes after the opening hour (08:13:27 rather than 08:00:00), so
     # the morning messages do not all land on the hour. 0 sends them at it.
     follow_up_opening_spread_minutes: int = 0
+    # Every hand-over to a person is also POSTed here as JSON (the contact,
+    # the team, the reason and a link to the conversation in the portal), so a
+    # deployment can tell its team somewhere else, such as a chat group. Empty
+    # sends nothing; ESCALATION_WEBHOOK_SECRET goes as a Bearer token.
+    escalation_webhook_url: str = ""
+    escalation_webhook_secret: str = ""
 
     @field_validator("follow_up_hours")
     @classmethod

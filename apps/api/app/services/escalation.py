@@ -13,18 +13,26 @@ channel, else the client's default tray, else nobody - the conversation waits
 in human mode unassigned and every portal device rings.
 """
 
+import logging
 from dataclasses import dataclass
+
+import httpx
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Agent, Conversation, EscalationRule, PortalUser, Team, now_utc
+from ..config import get_settings
+from ..models import Agent, Client, Conversation, EscalationRule, PortalUser, Team, now_utc
 from .conversation_state import assign, cancel_follow_up, record_activity, set_team
 from .notifications import notify_assigned, notify_needs_human
 from .routing import route_conversation
 from .tools.specs import ToolSpec
 
+logger = logging.getLogger(__name__)
+
 TRIGGERS = ("frustration", "human_request", "cannot_solve")
+# Short: the hand-over runs before the farewell is delivered.
+WEBHOOK_TIMEOUT_SECONDS = 5.0
 
 # Spanish like the rest of the LLM-facing scaffolding.
 ESCALATION_RULES_INTRO = (
@@ -225,3 +233,44 @@ async def apply_escalation(
         await notify_assigned(db, conversation, routed, agent.name)
     else:
         await notify_needs_human(db, conversation, f"{agent.name}: {reason}" if reason else agent.name, team=team)
+    await _tell_webhook(db, conversation, agent, team=team, person=routed, reason=reason)
+
+
+async def _post(url: str, payload: dict, headers: dict) -> int:
+    async with httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT_SECONDS) as http:
+        response = await http.post(url, json=payload, headers=headers)
+    return response.status_code
+
+
+async def _tell_webhook(db: Session, conversation: Conversation, agent: Agent, *, team, person, reason: str) -> None:
+    """POST the hand-over to ``ESCALATION_WEBHOOK_URL``. Best-effort: a
+    receiver that is down or slow never stops the conversation reaching people."""
+    settings = get_settings()
+    url = settings.escalation_webhook_url.strip()
+    if not url:
+        return
+    client = db.get(Client, conversation.client_id)
+    slug = client.portal_slug if client else ""
+    contact = conversation.contact
+    payload = {
+        "event": "escalated",
+        "conversation_id": str(conversation.id),
+        "client_id": str(conversation.client_id),
+        "channel": conversation.channel,
+        "agent": agent.name,
+        "contact_name": conversation.contact_name or (contact.name if contact else None),
+        "contact_phone": contact.phone if contact else None,
+        "team": team.name if team else None,
+        "assignee": person.name if person else None,
+        "reason": reason,
+        "portal_url": f"{settings.frontend_url.rstrip('/')}/portal/{slug}/inbox/{conversation.id}" if slug else None,
+    }
+    secret = settings.escalation_webhook_secret.strip()
+    headers = {"Authorization": f"Bearer {secret}"} if secret else {}
+    try:
+        status = await _post(url, payload, headers)
+    except httpx.HTTPError as exc:
+        logger.warning("escalation webhook failed (%s)", type(exc).__name__)
+        return
+    if status >= 400:
+        logger.warning("escalation webhook rejected the hand-over (%s)", status)

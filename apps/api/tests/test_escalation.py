@@ -3,10 +3,13 @@ where the conversation lands."""
 
 from unittest.mock import AsyncMock
 
+import httpx
+
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.services import ai as ai_service
+from app.services import escalation as escalation_service
 from app.services import whatsapp_inbound as whatsapp_inbound_service
 from app.services import whatsapp as whatsapp_service
 
@@ -196,3 +199,52 @@ def test_builtin_triggers_can_be_switched_off(authenticated_client: TestClient, 
     assert is_error
     _, is_error = spec.handler({"rule": 1, "reason": "cotización"})
     assert not is_error
+
+
+def _webhook_setup(client: TestClient, monkeypatch, company: str):
+    customer, slug, members, agent, channel = _setup(client, company, ["Ana"])
+    team = client.post(f"/api/portal/{slug}/teams", json={"name": "Atendimento", "member_ids": []}).json()
+    client.put(f"/api/agents/{agent['id']}/escalation-rules", json={"default_team_id": team["id"], "rules": []})
+    monkeypatch.setattr(whatsapp_service, "bridge_command", AsyncMock(return_value={}))
+    monkeypatch.setattr(
+        whatsapp_inbound_service,
+        "run_completion",
+        _escalating_completion({"trigger": "human_request", "reason": "quer falar com uma pessoa"}, "Já te passo para alguém da equipe."),
+    )
+    settings = get_settings()
+    monkeypatch.setattr(settings, "escalation_webhook_url", "http://avisos.example/transferencia")
+    monkeypatch.setattr(settings, "escalation_webhook_secret", "s3cret")
+    monkeypatch.setattr(settings, "frontend_url", "https://atendimento.example/")
+    return slug, channel
+
+
+def test_a_hand_over_is_posted_to_the_escalation_webhook(authenticated_client: TestClient, monkeypatch):
+    slug, channel = _webhook_setup(authenticated_client, monkeypatch, "Aviso Co")
+    posted = []
+
+    async def post(url, payload, headers):
+        posted.append((url, payload, headers))
+        return 202
+
+    monkeypatch.setattr(escalation_service, "_post", post)
+    body = _inbound(authenticated_client, channel["id"], "quero falar com uma pessoa").json()
+    assert body["mode"] == "human"
+    (url, payload, headers), = posted
+    assert url == "http://avisos.example/transferencia" and headers == {"Authorization": "Bearer s3cret"}
+    assert payload["event"] == "escalated" and payload["team"] == "Atendimento" and payload["assignee"] is None
+    assert payload["reason"] == "quer falar com uma pessoa" and payload["agent"] == "Beto"
+    assert payload["contact_name"] == "Sam" and "3001112233" in payload["contact_phone"]
+    assert payload["portal_url"] == f"https://atendimento.example/portal/{slug}/inbox/{body['conversation_id']}"
+
+
+def test_a_webhook_that_is_down_never_stops_the_hand_over(authenticated_client: TestClient, monkeypatch):
+    slug, channel = _webhook_setup(authenticated_client, monkeypatch, "Caido Co")
+
+    async def post(url, payload, headers):
+        raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(escalation_service, "_post", post)
+    body = _inbound(authenticated_client, channel["id"], "quero falar com uma pessoa").json()
+    assert body["mode"] == "human" and body["reply"] == "Já te passo para alguém da equipe."
+    conversation = authenticated_client.get(f"/api/conversations/{body['conversation_id']}").json()
+    assert conversation["mode"] == "human"
