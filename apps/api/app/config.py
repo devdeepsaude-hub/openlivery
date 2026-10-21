@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     # Thinking mode sent to Claude ("between_tools" keeps current models from
     # thinking before they answer); empty leaves the model's default.
     anthropic_thinking: str = "between_tools"
+    # How much of each tool result an earlier reply carries in the history,
+    # in the internal note that keeps the agent from redoing or contradicting
+    # what its tools returned. A result cut there is marked as cut.
+    tool_note_result_chars: int = 300
     # WhatsApp replies keep "typing..." on for as long as a person would take
     # to type them, at this many characters per second (0 turns it off),
     # never longer than TYPING_MAX_SECONDS. Counts on top of the reply delay.

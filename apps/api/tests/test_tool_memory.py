@@ -34,3 +34,23 @@ def test_a_failed_tool_is_marked_and_long_results_are_cut():
     calls = [{"name": "gerar_pix", "arguments": {}, "result_preview": "x" * 1000, "is_error": True}]
     reply = llm_turns([_message("assistant", "Não consegui.", calls)], "en")[0]["content"]
     assert "gerar_pix() (failed) -> " in reply and "x" * 301 not in reply
+
+
+def test_the_note_carries_as_much_as_set_and_marks_what_it_cut(monkeypatch):
+    from app.config import get_settings
+    from app.services.tools import loop
+
+    monkeypatch.setattr(get_settings(), "tool_note_result_chars", 2000)
+    # The stored preview keeps at least what the note will carry.
+    metadata = []
+    loop._record(metadata, "listar_psicologas", {}, "z" * 3000, False)
+    assert metadata[0]["result_preview"] == "z" * 2000 + "…"
+
+    whole = [{"name": "listar_psicologas", "arguments": {}, "result_preview": "y" * 1500, "is_error": False}]
+    reply = llm_turns([_message("assistant", "Indico a Karine.", whole)], "pt")[0]["content"]
+    assert "y" * 1500 in reply and "[cortado nesta nota]" not in reply
+    # A preview already cut when stored is marked too, so the agent knows the
+    # rest existed instead of taking what it said about it as made up.
+    cut = [{"name": "listar_psicologas", "arguments": {}, "result_preview": "y" * 1500 + "…", "is_error": False}]
+    reply = llm_turns([_message("assistant", "Indico a Karine.", cut)], "pt")[0]["content"]
+    assert "y" * 1500 + "… [cortado nesta nota]" in reply and "você viu os resultados inteiros" in reply.lower()

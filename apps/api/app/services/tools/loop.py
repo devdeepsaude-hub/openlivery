@@ -8,6 +8,7 @@ the loop ends.
 
 import json
 
+from ...config import get_settings
 from ..ai import Completion, Usage, _post_json, chat_message, completion_from, extract_chat_text, read_usage, sampling_params, send_chat
 from ..tool_files import MAX_TOOL_FILES
 from .http_exec import execute_http_tool
@@ -34,7 +35,9 @@ async def _execute(spec: ToolSpec, args: dict) -> tuple[str, bool, list]:
 
 
 def _record(metadata: list[dict], name: str, args: dict, result: str, is_error: bool) -> None:
-    preview = result[:RESULT_PREVIEW_CHARS] + ("…" if len(result) > RESULT_PREVIEW_CHARS else "")
+    # Kept at least as long as the history note carries.
+    limit = max(RESULT_PREVIEW_CHARS, get_settings().tool_note_result_chars)
+    preview = result[:limit] + ("…" if len(result) > limit else "")
     metadata.append({"name": name, "arguments": args, "result_preview": preview, "is_error": is_error})
 
 

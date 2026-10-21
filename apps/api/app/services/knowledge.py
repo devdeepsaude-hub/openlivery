@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import industries
+from ..config import get_settings
 from .attachments import llm_text
 from ..models import Agent, KnowledgeChunk, KnowledgeDocument
 from .embeddings import cosine_similarity, embed_query, embed_texts
@@ -427,22 +428,30 @@ def llm_turns(messages, lang: str | None = None) -> list[dict]:
 # reply text is stored as the turn, so without this the agent forgets what it
 # looked up or did (a booking it made, the slots it saw) and repeats or
 # contradicts it a message later.
+# A result cut short in the note is marked as such, and the note says the
+# agent saw it whole: an agent reading a list that stops midway otherwise takes
+# what it said about the missing part as made up, and apologizes for it.
 _TOOL_NOTE = {
-    "es": {"intro": "[Nota interna, no la repitas al cliente: herramientas usadas antes de esta respuesta]", "failed": "falló"},
-    "en": {"intro": "[Internal note, do not repeat it to the customer: tools used before this reply]", "failed": "failed"},
-    "pt": {"intro": "[Nota interna, não repita para o cliente: ferramentas usadas antes desta resposta]", "failed": "falhou"},
+    "es": {"intro": "[Nota interna, no la repitas al cliente: herramientas usadas antes de esta respuesta. Al responder viste los resultados completos; aquí pueden aparecer cortados]",
+           "failed": "falló", "cut": "[cortado en esta nota]"},
+    "en": {"intro": "[Internal note, do not repeat it to the customer: tools used before this reply. You saw the whole results when you answered; here they may be cut short]",
+           "failed": "failed", "cut": "[cut short in this note]"},
+    "pt": {"intro": "[Nota interna, não repita para o cliente: ferramentas usadas antes desta resposta. Você viu os resultados inteiros quando respondeu; aqui eles podem aparecer cortados]",
+           "failed": "falhou", "cut": "[cortado nesta nota]"},
 }
-_TOOL_NOTE_RESULT_CHARS = 300
 
 
 def _tool_summary(calls: list, note: dict) -> str:
+    limit = max(1, get_settings().tool_note_result_chars)
     lines = [note["intro"]]
     for call in calls:
         if not isinstance(call, dict):
             continue
         args = call.get("arguments") or {}
         shown_args = ", ".join(f"{key}={value}" for key, value in args.items()) if isinstance(args, dict) else str(args)
-        result = str(call.get("result_preview") or "").replace("\n", " ")[:_TOOL_NOTE_RESULT_CHARS]
+        result = str(call.get("result_preview") or "").replace("\n", " ")
+        if len(result) > limit or result.endswith("…"):
+            result = f"{result[:limit].removesuffix('…')}… {note['cut']}"
         status = f" ({note['failed']})" if call.get("is_error") else ""
         lines.append(f"- {call.get('name')}({shown_args}){status} -> {result}")
     return "\n".join(lines)
