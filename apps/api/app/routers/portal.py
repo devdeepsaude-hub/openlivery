@@ -77,7 +77,7 @@ from ..security import create_portal_token, decode_portal_token, verify_password
 from ..services import channel_accounts
 from ..services.capture import field_definitions
 from ..services import bookings
-from ..services.contacts import display_name, merge_contacts, normalize_phone, phone_from_chat_id, rename_conversations
+from ..services.contacts import display_name, merge_contacts, normalize_phone, rename_conversations
 from ..services.tags import create_tag, delete_tag, get_tag, list_tags, rename_tag, tag_count, tag_out
 from ..services.teams import TEAM_CHANNELS, create_team, delete_team, get_team, list_teams, members_out, team_out, update_team
 from ..services.whatsapp_templates import (
@@ -2080,12 +2080,6 @@ async def portal_summarize_conversation(
         raise HTTPException(status_code=502, detail="The summary could not be written. Try again in a moment.") from exc
 
 
-def _contact_phone(conversation: Conversation) -> str:
-    if conversation.contact and conversation.contact.phone:
-        return conversation.contact.phone
-    return phone_from_chat_id(conversation.external_chat_id) or ""
-
-
 @router.get("/{slug}/conversations/{conversation_id}/bookings", response_model=BookingsOut)
 async def portal_conversation_bookings(
     slug: str, conversation_id: uuid.UUID, client: Client = Depends(_portal_client), db: Session = Depends(get_db)
@@ -2094,7 +2088,7 @@ async def portal_conversation_bookings(
     conversation = _detail(db, client, conversation_id)
     if not bookings.enabled():
         return {"enabled": False, "bookings": []}
-    phone = _contact_phone(conversation)
+    phone = bookings.contact_phone(conversation)
     return {"enabled": True, "bookings": await bookings.list_for(phone) if phone else []}
 
 
@@ -2115,7 +2109,7 @@ async def portal_booking_action(
         raise HTTPException(status_code=404, detail="No booking service is set up")
     if user is None:
         raise HTTPException(status_code=403, detail="Sign in with your own account to change a booking")
-    phone = _contact_phone(conversation)
+    phone = bookings.contact_phone(conversation)
     if not phone:
         raise HTTPException(status_code=409, detail="This conversation has no phone number to find bookings by")
     return {"enabled": True, "bookings": await bookings.act(booking_id, action, phone, user.name or user.email)}

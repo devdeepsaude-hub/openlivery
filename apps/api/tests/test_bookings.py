@@ -17,7 +17,7 @@ BOOKING = {
 }
 
 
-def _conversation(client: TestClient, monkeypatch, company: str = "Agenda Co"):
+def _conversation(client: TestClient, monkeypatch, company: str = "Agenda Co", reply=None):
     customer = client.post("/api/clients", json={"name": company, "is_active": True}).json()
     slug = customer["portal_slug"]
     client.post(f"/api/clients/{customer['id']}/portal-users",
@@ -30,7 +30,7 @@ def _conversation(client: TestClient, monkeypatch, company: str = "Agenda Co"):
     }).json()
     channel = client.put(f"/api/whatsapp/channels/{customer['id']}", json={"agent_id": agent["id"]}).json()
     monkeypatch.setattr(whatsapp_service, "bridge_command", AsyncMock(return_value={}))
-    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", AsyncMock(return_value=ai_service.Completion(text="Oi!")))
+    monkeypatch.setattr(whatsapp_inbound_service, "run_completion", reply or AsyncMock(return_value=ai_service.Completion(text="Oi!")))
     body = client.post(
         f"/api/internal/whatsapp/channels/{channel['id']}/inbound",
         headers={"X-Bridge-Token": get_settings().whatsapp_bridge_token},
@@ -109,3 +109,40 @@ def test_another_clients_conversation_is_not_found(authenticated_client: TestCli
     other_slug, _ = _conversation(client, monkeypatch, "Outra Co")
     _service(monkeypatch, httpx.Response(200, json={"bookings": [BOOKING]}))
     assert client.get(f"/api/portal/{other_slug}/conversations/{conversation_id}/bookings").status_code == 404
+
+
+def test_the_reply_prompt_carries_the_bookings_as_they_are_now(authenticated_client: TestClient, monkeypatch):
+    _service(monkeypatch, httpx.Response(200, json={"bookings": [BOOKING]}))
+    captured = {}
+
+    async def reply(db, agent, base_url, api_key, messages, **kwargs):
+        captured["system"] = messages[0]["content"]
+        return ai_service.Completion(text="Oi!")
+
+    _conversation(authenticated_client, monkeypatch, "Prompt Co", reply=reply)
+    assert "- Pré-sessão com Erika, quinta 22/10 às 16h30: Confirmada" in captured["system"]
+
+
+def test_the_prompt_context_names_each_booking_or_none(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+
+    conversation = SimpleNamespace(contact=SimpleNamespace(phone="+573001112233"), external_chat_id="573001112233@s.whatsapp.net")
+    monkeypatch.setattr(get_settings(), "bookings_url", "")
+    assert asyncio.run(bookings_service.prompt_context(conversation, "pt")) == ""
+
+    _service(monkeypatch, httpx.Response(200, json={"bookings": [BOOKING]}))
+    block = asyncio.run(bookings_service.prompt_context(conversation, "pt"))
+    assert block.startswith("RESERVAS DESTA PESSOA AGORA") and "- Pré-sessão com Erika, quinta 22/10 às 16h30: Confirmada" in block
+    assert "não a confirme nem a lembre como marcada" in block
+
+    _service(monkeypatch, httpx.Response(200, json={"bookings": []}))
+    assert "Nenhuma reserva ativa." in asyncio.run(bookings_service.prompt_context(conversation, "pt"))
+
+    # A service that is down leaves the prompt as it was: the reply still goes out.
+    _service(monkeypatch, httpx.ConnectError("down"))
+    assert asyncio.run(bookings_service.prompt_context(conversation, "pt")) == ""
+    # No phone to look up by: nothing to say.
+    nobody = SimpleNamespace(contact=None, external_chat_id=None)
+    _service(monkeypatch, httpx.Response(200, json={"bookings": [BOOKING]}))
+    assert asyncio.run(bookings_service.prompt_context(nobody, "pt")) == ""

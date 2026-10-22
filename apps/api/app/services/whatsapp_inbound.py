@@ -19,6 +19,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..database import new_session
+from . import bookings
 from .contacts import display_name, phone_from_chat_id, previous_conversation_recap, rename_conversations, resolve_contact
 from .conversation_state import exchanged_only, note_inbound, note_reply
 from ..config import get_settings
@@ -457,6 +458,9 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
     contact_block = contact_context(conversation, agent.prompt_language, definitions)
     if contact_block:
         system_content += "\n\n" + contact_block
+    booking_block = await bookings.prompt_context(conversation, agent.prompt_language)
+    if booking_block:
+        system_content += "\n\n" + booking_block
     recap = previous_conversation_recap(db, conversation)
     if recap:
         system_content += "\n\n" + recap

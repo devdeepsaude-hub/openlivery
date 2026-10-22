@@ -20,13 +20,35 @@ import httpx
 from fastapi import HTTPException
 
 from ..config import get_settings
+from .contacts import phone_from_chat_id
 
 TIMEOUT_SECONDS = 15.0
 ACTIONS = ("cancel", "paid")
+# The agent's prompt carries the contact's bookings as they are now, so it never
+# confirms or reminds of one the team cancelled since the conversation said so.
+# LLM-facing, in the language of the agent's prompt like the rest of it.
+_CONTEXT = {
+    "es": ("RESERVAS DE ESTA PERSONA AHORA (consultadas en el sistema de reservas en este momento; valen más que la conversación):",
+           "Ninguna reserva activa.",
+           "Si la conversación habla de una reserva que no está en esta lista, fue cancelada o expiró: no la confirmes ni la recuerdes como agendada."),
+    "en": ("THIS PERSON'S BOOKINGS NOW (looked up in the booking system just now; they outweigh the conversation):",
+           "No active booking.",
+           "If the conversation mentions a booking that is not on this list, it was cancelled or expired: do not confirm it or remind them of it as booked."),
+    "pt": ("RESERVAS DESTA PESSOA AGORA (consultadas no sistema de reservas neste momento; valem mais do que a conversa):",
+           "Nenhuma reserva ativa.",
+           "Se a conversa fala de uma reserva que não está nesta lista, ela foi cancelada ou expirou: não a confirme nem a lembre como marcada."),
+}
 
 
 def enabled() -> bool:
     return bool(get_settings().bookings_url.strip())
+
+
+def contact_phone(conversation) -> str:
+    """The phone bookings are looked up by: the contact's, else the chat's own."""
+    if conversation.contact and conversation.contact.phone:
+        return conversation.contact.phone
+    return phone_from_chat_id(conversation.external_chat_id) or ""
 
 
 async def _request(method: str, path: str, *, params: dict | None = None, body: dict | None = None) -> httpx.Response:
@@ -97,3 +119,19 @@ async def act(booking_id: str, action: str, phone: str, by: str) -> list[dict]:
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail="The booking service did not answer. Try again in a moment.") from exc
     return _bookings(response)
+
+
+async def prompt_context(conversation, lang: str) -> str:
+    """The contact's bookings right now, worded for the agent's prompt. Empty
+    with no booking service, no phone, or when the service fails: the reply
+    goes out without it rather than not at all."""
+    phone = contact_phone(conversation)
+    if not enabled() or not phone:
+        return ""
+    try:
+        items = await list_for(phone)
+    except HTTPException:
+        return ""
+    title, empty, rule = _CONTEXT[lang if lang in _CONTEXT else "es"]
+    lines = [f"- {item['title']}, {item['when']}: {item['status']}" for item in items] or [empty]
+    return "\n".join([title, *lines, rule])

@@ -557,3 +557,24 @@ def test_after_a_night_the_next_follow_up_still_goes_out_the_same_day(setup, mon
     s.send.assert_awaited_once()
     # 21 hours after the reply, 19:00 the same evening: not the next morning.
     assert state(s)[1:3] == (1, reply + timedelta(minutes=1260))
+
+
+def test_a_follow_up_is_written_knowing_the_bookings_as_they_are_now(setup, monkeypatch):
+    """The follow-up has no tools: without the booking service's word it would
+    remind a contact of a booking the team cancelled after the conversation."""
+    import httpx
+    from app.services import bookings as bookings_service
+
+    s = setup
+    configure(s)
+    incoming(s)
+    monkeypatch.setattr(get_settings(), "bookings_url", "http://agenda.example")
+
+    async def request(method, path, *, params=None, body=None):
+        return httpx.Response(200, json={"bookings": []})
+
+    monkeypatch.setattr(bookings_service, "_request", request)
+    rewind(s, 61)
+    sweep()
+    system = s.nudge.await_args.args[4][0]["content"]
+    assert "THIS PERSON'S BOOKINGS NOW" in system and "No active booking." in system

@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session
 
 from ..config import follow_up_window, get_settings
 from ..models import Agent, Conversation, Message, now_utc
+from . import bookings
 from .ai import Completion, chat_completion
 from .availability import agent_available
 from .capture import capture_context, field_definitions
@@ -342,6 +343,9 @@ async def _compose(db: Session, conversation: Conversation, agent: Agent, step: 
     contact = contact_context(conversation, agent.prompt_language, definitions)
     if contact:
         system += "\n\n" + contact
+    booking_block = await bookings.prompt_context(conversation, agent.prompt_language)
+    if booking_block:
+        system += "\n\n" + booking_block
     system += "\n\n" + text[step.kind]
     cue = text["cue_close" if step.kind == "close" else "cue"].format(elapsed=_elapsed(elapsed, lang))
     messages = [
