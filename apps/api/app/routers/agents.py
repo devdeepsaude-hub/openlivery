@@ -19,7 +19,7 @@ from ..schemas import (
 )
 from ..services.capture import CAPTURE_CHANNELS, field_definitions
 from ..services.follow_ups import FOLLOW_UP_CHANNELS, MAX_MINUTES, MIN_MINUTES, check_schedule
-from ..services.knowledge import build_system_prompt, embed_document_chunks, reindex_agent, reindex_document
+from ..services.knowledge import build_system_prompt, embed_document_chunks, reindex_agent, reindex_document, without_boundary
 
 
 router = APIRouter(prefix="/agents", tags=["Agents"])
@@ -135,7 +135,7 @@ def delete_agent(agent_id: uuid.UUID, db: Session = Depends(get_db), user: User 
 def get_prompt(agent_id: uuid.UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """What the model receives on every message, minus the knowledge retrieved per message."""
     agent = _agent(db, user, agent_id)
-    return AgentPromptOut(prompt=build_system_prompt(agent, ""))
+    return AgentPromptOut(prompt=without_boundary(build_system_prompt(agent, "")))
 
 
 def _document_out(doc: KnowledgeDocument) -> dict:

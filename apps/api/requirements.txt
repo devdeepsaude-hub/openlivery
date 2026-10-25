@@ -18,4 +18,6 @@ email-validator==2.2.0
 # the browser (e.g. America/Buenos_Aires). Bundling the tzdata wheel gives the
 # runtime the complete set, so timezone validation matches what users can pick.
 tzdata==2026.4
+# Claude's own Messages API, with prompt caching (services/anthropic_native.py).
+anthropic==2.3.0
 pytest==8.4.1

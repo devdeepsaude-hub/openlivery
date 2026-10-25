@@ -9,6 +9,7 @@ the loop ends.
 import json
 
 from ...config import get_settings
+from ..anthropic_native import NATIVE_CONTENT
 from ..ai import Completion, Usage, _post_json, chat_message, completion_from, extract_chat_text, read_usage, sampling_params, send_chat
 from ..tool_files import MAX_TOOL_FILES
 from .http_exec import execute_http_tool
@@ -76,7 +77,12 @@ async def tool_loop(
             return completion
         # The assistant turn that asked for the tools must be echoed back, then
         # one tool message per call, in the same order.
-        convo.append({"role": "assistant", "content": message.get("content") or "", "tool_calls": calls})
+        echoed = {"role": "assistant", "content": message.get("content") or "", "tool_calls": calls}
+        if message.get(NATIVE_CONTENT):
+            # Anthropic's own content blocks (thinking included), which its API
+            # needs back to continue the round; see anthropic_native.
+            echoed[NATIVE_CONTENT] = message[NATIVE_CONTENT]
+        convo.append(echoed)
         for call in calls:
             function = call.get("function") or {}
             try:

@@ -71,6 +71,13 @@ class Settings(BaseSettings):
     # Thinking mode sent to Claude ("between_tools" keeps current models from
     # thinking before they answer); empty leaves the model's default.
     anthropic_thinking: str = "between_tools"
+    # Send Claude requests to Anthropic's Messages API through the official SDK,
+    # with prompt caching, instead of the OpenAI-compatible endpoint (which
+    # caches nothing). See services/anthropic_native.py.
+    anthropic_native: bool = False
+    # How long a cached prompt lives on that path: "5m" (written at 1.25x the
+    # input price) or "1h" (2x), each read refreshing it.
+    anthropic_cache_ttl: str = "5m"
     # How much of each tool result an earlier reply carries in the history,
     # in the internal note that keeps the agent from redoing or contradicting
     # what its tools returned. A result cut there is marked as cut.

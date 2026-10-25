@@ -13,6 +13,7 @@ from ..models import Agent, KnowledgeChunk, KnowledgeDocument
 from .embeddings import cosine_similarity, embed_query, embed_texts
 from .providers import resolve_model_credentials
 from . import snippets
+from .prompt_cache import CACHE_BOUNDARY, insert_stable, without_boundary  # noqa: F401  (re-exported)
 
 
 MAX_FULL_CONTEXT_CHARS = 45_000
@@ -527,8 +528,9 @@ def build_system_prompt(agent: Agent, knowledge_text: str, capture_text: str = "
 
     Headings and the few fixed sentences follow the agent's prompt language;
     what the operator typed goes in verbatim. Empty sections are left out.
-    ``capture_text`` (from ``services.capture.capture_context``) goes right
-    after the job, where the model still reads instructions as its own tasks.
+    What changes from turn to turn (the current time, ``capture_text`` from
+    ``services.capture.capture_context``, and the retrieved documents) comes
+    last, after ``CACHE_BOUNDARY``, so the rest is the same on every request.
     """
     client = agent.client
     lang = agent.prompt_language if agent.prompt_language in _PROMPT_TEXT else "es"
@@ -554,13 +556,10 @@ def build_system_prompt(agent: Agent, knowledge_text: str, capture_text: str = "
     head = "\n".join([
         f"# {text['title'].format(name=agent.name, client=client.name)}",
         *identity,
-        text["now"].format(tz=tz_name, now=f"{text['weekdays'][now.weekday()]}, {now:%Y-%m-%d %H:%M}"),
     ])
     parts = [head]
     if agent.instructions.strip():
         parts.append(_section(text["job"], agent.instructions.strip()))
-    if capture_text.strip():
-        parts.append(capture_text.strip())
 
     facts = [
         (text["summary"], agent.brief_summary),
@@ -587,15 +586,16 @@ def build_system_prompt(agent: Agent, knowledge_text: str, capture_text: str = "
     if agent.personality.strip():
         parts.append(_section(text["tone"], agent.personality.strip()))
 
-    knowledge = []
     if agent.qa_pairs:
         faq = "\n\n".join(f"**{text['q']}:** {qa.question}\n**{text['a']}:** {qa.answer}" for qa in agent.qa_pairs)
-        knowledge.append(_section(text["faq"], faq, 3))
-    if knowledge_text.strip():
-        knowledge.append(_section(text["documents"], knowledge_text, 3))
-    if knowledge:
-        parts.append(_section(text["knowledge"], "\n\n".join(knowledge) + "\n\n" + text["grounding"]))
+        parts.append(_section(text["knowledge"], _section(text["faq"], faq, 3) + "\n\n" + text["grounding"]))
     fixed = snippets.blocks(agent)
     if fixed:
         parts.append(_section(text["snippets"], text["snippets_rule"] + "\n" + "\n".join(f"- [[{name}]]" for name in fixed)))
-    return "\n\n".join(parts)
+
+    changing = [text["now"].format(tz=tz_name, now=f"{text['weekdays'][now.weekday()]}, {now:%Y-%m-%d %H:%M}")]
+    if capture_text.strip():
+        changing.append(capture_text.strip())
+    if knowledge_text.strip():
+        changing.append(_section(text["knowledge"], _section(text["documents"], knowledge_text, 3) + "\n\n" + text["grounding"]))
+    return "\n\n".join(parts) + CACHE_BOUNDARY + "\n\n".join(changing)

@@ -25,7 +25,7 @@ from .conversation_state import exchanged_only, note_inbound, note_reply
 from ..config import get_settings
 from ..models import Agent, Conversation, Message, MessageAttachment, now_utc
 from .attachments import llm_text, store_attachment
-from .knowledge import contact_context, build_system_prompt, llm_turns, retrieve_knowledge
+from .knowledge import contact_context, build_system_prompt, insert_stable, llm_turns, retrieve_knowledge
 from .media import audio_filename, describe_image, transcribe_audio
 from .notifications import notify_needs_human
 from .routing import route_new_conversation_by_tags
@@ -359,12 +359,12 @@ def _trailing_visitor_burst(history: list[Message]) -> list[Message]:
     return list(reversed(burst))
 
 
-def _gesture_rules(burst: list[Message]) -> str:
-    rules = WHATSAPP_GESTURE_RULES
-    if len(burst) > 1:
-        listing = "\n".join(f"[{index}] {llm_text(item)[:160]}" for index, item in enumerate(burst, start=1))
-        rules += "\n" + WHATSAPP_QUOTE_RULE.format(listing=listing)
-    return rules
+def _quote_rule(burst: list[Message]) -> str:
+    """The burst's messages, numbered for quoting; changes every turn."""
+    if len(burst) <= 1:
+        return ""
+    listing = "\n".join(f"[{index}] {llm_text(item)[:160]}" for index, item in enumerate(burst, start=1))
+    return WHATSAPP_QUOTE_RULE.format(listing=listing)
 
 
 async def _apply_gestures(
@@ -468,12 +468,17 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
     escalation_specs = None
     escalation_holder: list = []
     capture_holder: list = []
+    # Fixed rules join the cached part of the prompt; what lists this turn's
+    # messages stays after the boundary.
     if conversation.channel in ("whatsapp", "whatsapp_cloud"):
-        system_content += "\n\n" + _gesture_rules(burst)
+        system_content = insert_stable(system_content, WHATSAPP_GESTURE_RULES)
+        quote = _quote_rule(burst)
+        if quote:
+            system_content += "\n\n" + quote
     if conversation.channel in ("whatsapp", "whatsapp_cloud", "instagram", "messenger"):
         rules = escalation_active_rules(db, agent)
         if escalation_enabled(db, agent, rules):
-            system_content += "\n\n" + escalation_prompt(rules, builtin_enabled=agent.escalation_builtin_enabled)
+            system_content = insert_stable(system_content, escalation_prompt(rules, builtin_enabled=agent.escalation_builtin_enabled))
             escalation_specs = [
                 build_escalation_spec(rules, escalation_holder, builtin_enabled=agent.escalation_builtin_enabled)
             ]
@@ -484,7 +489,7 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
     resolution_holder: list = []
     resolution_spec = build_resolution_spec(resolution_holder) if agent.resolve_enabled else None
     if resolution_spec:
-        system_content += "\n\n" + resolution_prompt(agent)
+        system_content = insert_stable(system_content, resolution_prompt(agent))
     extra_specs = [
         *(escalation_specs or []), *([capture_spec] if capture_spec else []), *([resolution_spec] if resolution_spec else []),
     ] or None

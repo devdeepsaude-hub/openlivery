@@ -13,7 +13,8 @@ import httpx
 from fastapi import HTTPException
 
 from ..config import get_settings
-from . import vendors
+from . import anthropic_native, vendors
+from .prompt_cache import without_boundary
 from .vendors import ProviderError
 
 logger = logging.getLogger(__name__)
@@ -141,6 +142,9 @@ async def send_chat(base_url: str, api_key: str, payload: dict, sampling: dict, 
     ``post`` lets a caller route through its own transport (the tool loop
     passes the one its tests stub).
     """
+    native = vendors.vendor_for_base_url(base_url) == "anthropic" and get_settings().anthropic_native
+    if not native:
+        payload = _plain(payload)
     candidates = [payload["model"], *vendors.fallback_models(base_url, payload["model"])]
     for index, model in enumerate(candidates):
         last = index == len(candidates) - 1
@@ -149,12 +153,26 @@ async def send_chat(base_url: str, api_key: str, payload: dict, sampling: dict, 
             sender = partial(_REAL_POST_JSON, timeout=get_settings().model_attempt_timeout)
         wire, wire_sampling = await vendors.adapt_chat(base_url, api_key, {**payload, "model": model}, sampling)
         try:
+            if native:
+                timeout = 90 if last else get_settings().model_attempt_timeout
+                return await anthropic_native.complete(api_key, wire, wire_sampling, timeout)
             return await post_completion(chat_url(base_url), auth_headers(api_key), wire, wire_sampling, post=sender)
         except (ProviderError, httpx.TransportError) as exc:
             if last or not vendors.should_fall_over(exc):
                 raise
             logger.warning("Model %s failed (%s); falling over to %s", model, getattr(exc, "detail", type(exc).__name__), candidates[index + 1])
     raise AssertionError("unreachable")
+
+
+def _plain(payload: dict) -> dict:
+    """The request as the chat-completions dialect takes it: the cache boundary
+    back to a paragraph break, and no content kept for Anthropic's own API."""
+    messages = [
+        {**{key: value for key, value in message.items() if key != anthropic_native.NATIVE_CONTENT},
+         "content": without_boundary(message.get("content"))}
+        for message in payload.get("messages") or []
+    ]
+    return {**payload, "messages": messages}
 
 
 def is_synthetic_reply(data: dict) -> bool:

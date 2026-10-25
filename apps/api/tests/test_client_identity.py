@@ -49,7 +49,9 @@ def test_prompt_names_the_business_type_and_previews_without_knowledge(authentic
     preview = client.get(f"/api/agents/{agent['id']}/prompt")
     assert preview.status_code == 200
     prompt = preview.json()["prompt"]
-    assert prompt.startswith("# Ramiro, asistente de IA de FinancialCoach\n- **Nombre:** Ramiro\n- **Negocio:** FinancialCoach\n- **Sector:** Contabilidad / impuestos\nFecha y hora actual")
+    assert prompt.startswith("# Ramiro, asistente de IA de FinancialCoach\n- **Nombre:** Ramiro\n- **Negocio:** FinancialCoach\n- **Sector:** Contabilidad / impuestos\n\n")
+    # The time changes every request, so it closes the prompt (after the cached part).
+    assert prompt.rsplit("\n\n", 1)[-1].startswith("Fecha y hora actual")
     assert "## Tu trabajo\nBook tax appointments." in prompt
     assert "## Conocimiento" not in prompt
 
@@ -66,7 +68,7 @@ def test_other_says_nothing_about_the_business(authenticated_client: TestClient)
     customer = client.post("/api/clients", json={"name": "Acme", "industry": "other", "business_type": "other"}).json()
     agent = client.post("/api/agents", json={"client_id": customer["id"], "name": "Bot", "is_active": True}).json()
     prompt = client.get(f"/api/agents/{agent['id']}/prompt").json()["prompt"]
-    assert "\n- **Nombre:** Bot\n- **Negocio:** Acme\nFecha y hora actual" in prompt
+    assert "\n- **Nombre:** Bot\n- **Negocio:** Acme\n\n" in prompt
     assert "Sector" not in prompt
 
 
