@@ -90,6 +90,11 @@ class Settings(BaseSettings):
     # of replies where it only addresses them ("Got it, Ana." -> "Got it."),
     # so the name stays in the greeting. Off leaves replies as the model wrote them.
     reply_name_only_in_greeting: bool = False
+    # Tools whose success backs a reply that says something is booked
+    # (comma-separated names, e.g. the one that books and the one that looks
+    # bookings up). A reply claiming a booking with none of them succeeding,
+    # for a contact with no booking on file, is written again. Empty: no check.
+    booking_evidence_tools: str = ""
     # Official messaging APIs. App credentials remain on the server.
     social_graph_version: str = "v25.0"
     social_worker_enabled: bool = True

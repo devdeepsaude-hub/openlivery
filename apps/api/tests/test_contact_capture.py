@@ -39,7 +39,7 @@ def _inbound(client: TestClient, channel_id: str, text: str, message_id: str, ph
 def _completion(calls: list[dict], reply: str, captured: dict):
     """A fake generation that calls the save tool with each of ``calls`` and
     records what the model was shown."""
-    async def fake(db, agent, base_url, api_key, messages, temperature=None, max_tokens=None, extra_specs=None):
+    async def fake(db, agent, base_url, api_key, messages, temperature=None, max_tokens=None, extra_specs=None, has_booking=None):
         captured["system"] = messages[0]["content"]
         captured["specs"] = {spec.name: spec for spec in (extra_specs or [])}
         captured["results"] = []

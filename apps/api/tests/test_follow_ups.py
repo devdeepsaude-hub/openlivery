@@ -310,7 +310,7 @@ def test_a_disconnected_channel_spends_nothing_and_still_closes(setup):
 
 
 def _resolving(reason="Booked the slot they asked for", farewell="Done, see you tomorrow!", *, escalate=False):
-    async def fake(db, agent, base_url, api_key, messages, temperature=None, max_tokens=None, extra_specs=None):
+    async def fake(db, agent, base_url, api_key, messages, temperature=None, max_tokens=None, extra_specs=None, has_booking=None):
         specs = {spec.name: spec for spec in extra_specs or []}
         assert "CLOSING THE CONVERSATION" in messages[0]["content"]
         result, is_error = specs["resolve_conversation"].handler({"reason": reason})

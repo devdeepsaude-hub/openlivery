@@ -46,6 +46,7 @@ from .conversation_state import cancel_follow_up, exchanged_only, hours_shown, r
 from .knowledge import build_system_prompt, contact_context, llm_turns
 from .providers import resolve_agent_credentials
 from .reply_names import keep_name_to_greeting
+from .snippets import blocks, expand
 from .usage import record_usage
 
 logger = logging.getLogger(__name__)
@@ -481,7 +482,7 @@ async def _run_step(db: Session, conversation: Conversation, now: datetime) -> N
     if step.text:
         text = step.text if reachable else ""
     else:
-        text = keep_name_to_greeting((completion.text or "").strip(), conversation) if completion else ""
+        text = keep_name_to_greeting(expand((completion.text or "").strip(), blocks(agent)), conversation) if completion else ""
     message = await _deliver(db, conversation, agent, text) if text else None
     if completion:
         record_usage(

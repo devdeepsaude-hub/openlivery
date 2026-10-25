@@ -108,6 +108,19 @@ async def list_for(phone: str) -> list[dict]:
     return _bookings(response)
 
 
+async def on_file(conversation) -> bool:
+    """Whether the service holds any booking for the conversation's contact.
+    True when it cannot tell (no service, no phone, or no answer), so a check
+    that relies on it never acts on a guess."""
+    phone = contact_phone(conversation)
+    if not enabled() or not phone:
+        return True
+    try:
+        return bool(await list_for(phone))
+    except HTTPException:
+        return True
+
+
 async def act(booking_id: str, action: str, phone: str, by: str) -> list[dict]:
     """Cancel a booking or mark it paid on behalf of ``by``; returns the refreshed list."""
     if action not in ACTIONS:

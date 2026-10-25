@@ -46,7 +46,7 @@ def _inbound(client: TestClient, channel_id: str, text: str, message_id: str = "
 
 
 def _escalating_completion(call_args: dict, farewell: str, captured: dict | None = None):
-    async def fake(db, agent, base_url, api_key, messages, temperature=None, max_tokens=None, extra_specs=None):
+    async def fake(db, agent, base_url, api_key, messages, temperature=None, max_tokens=None, extra_specs=None, has_booking=None):
         if captured is not None:
             captured["system"] = messages[0]["content"]
             captured["extra_specs"] = extra_specs
@@ -131,7 +131,7 @@ def test_without_anywhere_to_land_the_tool_is_not_offered(authenticated_client: 
     monkeypatch.setattr(whatsapp_service, "bridge_command", AsyncMock(return_value={}))
     captured: dict = {}
 
-    async def fake(db, agent_row, base_url, api_key, messages, temperature=None, max_tokens=None, extra_specs=None):
+    async def fake(db, agent_row, base_url, api_key, messages, temperature=None, max_tokens=None, extra_specs=None, has_booking=None):
         captured["extra_specs"] = extra_specs
         captured["system"] = messages[0]["content"]
         return ai_service.Completion(text="Con gusto te ayudo.", input_tokens=1, output_tokens=1)
@@ -173,7 +173,7 @@ def test_builtin_triggers_can_be_switched_off(authenticated_client: TestClient, 
     monkeypatch.setattr(whatsapp_service, "bridge_command", AsyncMock(return_value={}))
     captured: dict = {}
 
-    async def fake(db, agent_row, base_url, api_key, messages, temperature=None, max_tokens=None, extra_specs=None):
+    async def fake(db, agent_row, base_url, api_key, messages, temperature=None, max_tokens=None, extra_specs=None, has_booking=None):
         captured["extra_specs"] = extra_specs
         captured["system"] = messages[0]["content"]
         return ai_service.Completion(text="Con gusto te ayudo.", input_tokens=1, output_tokens=1)

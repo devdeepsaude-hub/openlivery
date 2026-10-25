@@ -503,6 +503,7 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
             temperature=agent.temperature,
             max_tokens=agent.max_tokens,
             extra_specs=extra_specs,
+            has_booking=lambda: bookings.on_file(conversation),
         )
     except Exception as exc:
         channel.last_error = ("Message received, but the agent could not reply. A person must continue this conversation."

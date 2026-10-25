@@ -12,6 +12,7 @@ from .attachments import llm_text
 from ..models import Agent, KnowledgeChunk, KnowledgeDocument
 from .embeddings import cosine_similarity, embed_query, embed_texts
 from .providers import resolve_model_credentials
+from . import snippets
 
 
 MAX_FULL_CONTEXT_CHARS = 45_000
@@ -261,6 +262,10 @@ _PROMPT_TEXT = {
         "a": "R",
         "documents": "Documentos",
         "grounding": "Usa este conocimiento cuando sea relevante. No inventes información que no aparezca aquí.",
+        "snippets": "Mensajes fijos",
+        "snippets_rule": ("Los bloques marcados así arriba son mensajes fijos. Cuando toque enviar uno, escribe solo su marcador "
+                          "en una línea aparte (por ejemplo [[nombre]]) y nada del texto del bloque: el sistema pone el mensaje "
+                          "completo. Puedes escribir antes y después del marcador. Mensajes fijos disponibles:"),
         "contact": "Contacto",
         "contact_name": "Nombre",
         "contact_phone": "Teléfono",
@@ -306,6 +311,10 @@ _PROMPT_TEXT = {
         "a": "A",
         "documents": "Documents",
         "grounding": "Use this knowledge when it is relevant. Do not invent information that is not here.",
+        "snippets": "Fixed messages",
+        "snippets_rule": ("The blocks marked this way above are fixed messages. When one is due, write only its marker on a "
+                          "line of its own (for example [[name]]) and none of the block's text: the system puts in the whole "
+                          "message. You may write before and after the marker. Fixed messages available:"),
         "contact": "Contact",
         "contact_name": "Name",
         "contact_phone": "Phone",
@@ -351,6 +360,10 @@ _PROMPT_TEXT = {
         "a": "R",
         "documents": "Documentos",
         "grounding": "Use este conhecimento quando for relevante. Não invente informações que não aparecem aqui.",
+        "snippets": "Mensagens fixas",
+        "snippets_rule": ("Os blocos marcados assim acima são mensagens fixas. Quando for a hora de mandar uma delas, escreva só "
+                          "o marcador dela numa linha sozinha (por exemplo [[nome]]) e nada do texto do bloco: o sistema coloca a "
+                          "mensagem inteira. Você pode escrever antes e depois do marcador. Mensagens fixas disponíveis:"),
         "contact": "Contato",
         "contact_name": "Nome",
         "contact_phone": "Telefone",
@@ -582,4 +595,7 @@ def build_system_prompt(agent: Agent, knowledge_text: str, capture_text: str = "
         knowledge.append(_section(text["documents"], knowledge_text, 3))
     if knowledge:
         parts.append(_section(text["knowledge"], "\n\n".join(knowledge) + "\n\n" + text["grounding"]))
+    fixed = snippets.blocks(agent)
+    if fixed:
+        parts.append(_section(text["snippets"], text["snippets_rule"] + "\n" + "\n".join(f"- [[{name}]]" for name in fixed)))
     return "\n\n".join(parts)

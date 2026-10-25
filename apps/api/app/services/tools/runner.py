@@ -5,6 +5,7 @@ semantics (HTTPException 502 on provider failure), same Completion result —
 plus tool_calls metadata when tools ran.
 """
 
+from collections.abc import Awaitable, Callable
 import time
 
 import httpx
@@ -14,6 +15,8 @@ from sqlalchemy.orm import Session
 
 from ...models import Agent, AgentTool
 from ..ai import Completion, chat_completion
+from ..reply_checks import guard_booking_claims
+from ..snippets import blocks, expand
 from .loop import tool_loop
 from .specs import build_tool_specs
 
@@ -45,17 +48,22 @@ async def run_completion(
     temperature: float | None = None,
     max_tokens: int | None = None,
     extra_specs: list | None = None,
+    has_booking: Callable[[], Awaitable[bool]] | None = None,
 ) -> Completion:
+    """``has_booking`` tells whether the contact has a booking on file, for the
+    check on replies that claim one (see ``reply_checks``); channels with no
+    contact to look up leave it out."""
     model = agent.model.strip()
     rows = db.scalars(select(AgentTool).where(AgentTool.agent_id == agent.id, AgentTool.enabled.is_(True))).all()
     specs = build_tool_specs(list(rows)) + list(extra_specs or [])
-    started = time.perf_counter()
-    if not specs:
-        completion = await chat_completion(agent.provider, base_url, api_key, model, messages, temperature=temperature, max_tokens=max_tokens)
-    else:
+    if specs:
         messages = _with_tool_rules(messages)
+
+    async def complete(prompt: list[dict]) -> Completion:
+        if not specs:
+            return await chat_completion(agent.provider, base_url, api_key, model, prompt, temperature=temperature, max_tokens=max_tokens)
         try:
-            completion = await tool_loop(base_url, api_key, model, messages, specs, temperature, max_tokens)
+            return await tool_loop(base_url, api_key, model, prompt, specs, temperature, max_tokens)
         except HTTPException:
             raise
         except (httpx.HTTPError, KeyError, ValueError, IndexError) as exc:
@@ -63,5 +71,10 @@ async def run_completion(
                 status_code=502,
                 detail="Could not get a valid response from the AI provider. Check the API key and the model.",
             ) from exc
+
+    started = time.perf_counter()
+    completion = await complete(messages)
+    completion = await guard_booking_claims(complete, messages, completion, lang=agent.prompt_language, has_booking=has_booking)
+    completion.text = expand(completion.text, blocks(agent))
     completion.duration_ms = int((time.perf_counter() - started) * 1000)
     return completion
