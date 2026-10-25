@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     # Debounced WhatsApp replies go out as up to this many messages, one per
     # paragraph, each after its own "typing..."; 1 sends the reply whole.
     reply_max_messages: int = 1
+    # Once a conversation has been answered, take the contact's first name out
+    # of replies where it only addresses them ("Got it, Ana." -> "Got it."),
+    # so the name stays in the greeting. Off leaves replies as the model wrote them.
+    reply_name_only_in_greeting: bool = False
     # Official messaging APIs. App credentials remain on the server.
     social_graph_version: str = "v25.0"
     social_worker_enabled: bool = True

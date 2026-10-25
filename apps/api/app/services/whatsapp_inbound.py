@@ -32,6 +32,7 @@ from .routing import route_new_conversation_by_tags
 from .model_catalog import DEFAULT_AUDIO_MODEL
 from .availability import on_duty
 from .providers import provider_for_model, resolve_agent_credentials, resolve_model_credentials
+from .reply_names import keep_name_to_greeting
 from .tools import run_completion
 from .usage import record_usage, schedule_generation_reconcile
 from .capture import apply_captures, build_capture_spec, capture_context, field_definitions
@@ -548,6 +549,7 @@ async def _reply_with_ai(db: Session, channel, conversation: Conversation, retri
         reply_text, quoted_message_id, quote_external_id = await _apply_gestures(
             db, conversation, completion.text, burst
         )
+    reply_text = keep_name_to_greeting(reply_text, conversation)
 
     outbound = None
     if reply_text:
