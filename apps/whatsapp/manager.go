@@ -67,6 +67,7 @@ type outboundMedia struct {
 type channelRuntime struct {
 	channelID string
 	client    *whatsmeow.Client
+	presence  *presence
 
 	mu            sync.Mutex
 	stopRequested bool
@@ -145,6 +146,14 @@ func (m *manager) connectChannel(ctx context.Context, channelID string) error {
 
 	client := whatsmeow.NewClient(device, m.log.Sub(channelID))
 	runtime := &channelRuntime{channelID: channelID, client: client}
+	runtime.presence = newPresence(func(ctx context.Context, state types.Presence) error {
+		if runtime.stopped() {
+			return nil
+		}
+		return client.SendPresence(ctx, state)
+	}, onlineLinger, func(err error) {
+		m.log.Warnf("channel %s: could not update the online status: %v", channelID, err)
+	})
 	m.mu.Lock()
 	m.runtimes[channelID] = runtime
 	m.mu.Unlock()
@@ -237,6 +246,7 @@ func (m *manager) handleEvent(runtime *channelRuntime, rawEvt any) {
 		m.persistMarker(ctx, runtime)
 
 	case *events.Connected:
+		runtime.presence.forget()
 		m.persistMarker(ctx, runtime)
 		extra := map[string]any{}
 		if id := runtime.client.Store.ID; id != nil {
@@ -434,10 +444,13 @@ func (m *manager) sendMessage(ctx context.Context, channelID, remoteJID, text st
 			ContextInfo: m.quoteContext(runtime, channelID, jid, quoteExternalID),
 		}}
 	}
+	runtime.presence.active(ctx)
 	sent, err := m.sendTracked(ctx, channelID, runtime.client, jid, message)
 	if err != nil {
 		return "", err
 	}
+	// The quiet period counts from the message, not from the moment it began.
+	runtime.presence.active(ctx)
 	if ownJID := runtime.client.Store.ID; ownJID != nil {
 		m.cache.put(channelID, sent.ID, cachedMessage{raw: message, chat: jid, sender: *ownJID, fromMe: true})
 	}
@@ -606,6 +619,7 @@ func (m *manager) signalRead(ctx context.Context, channelID, remoteJID string, m
 	}
 	ids := make([]types.MessageID, len(messageIDs))
 	copy(ids, messageIDs)
+	runtime.presence.active(ctx)
 	if err := runtime.client.MarkRead(ctx, ids, time.Now(), chat, sender); err != nil {
 		return err
 	}
@@ -640,6 +654,7 @@ func (m *manager) sendReaction(ctx context.Context, channelID, remoteJID, target
 		sender = *ownJID
 	}
 	reaction := runtime.client.BuildReaction(chat, sender, targetID, emoji)
+	runtime.presence.active(ctx)
 	_, err = runtime.client.SendMessage(ctx, chat, reaction)
 	return err
 }
