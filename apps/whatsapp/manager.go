@@ -94,18 +94,21 @@ type manager struct {
 	log       waLog.Logger
 	cache     *messageCache
 	echoes    *echoSet
+	// groups is nil unless the deployment picked groups for its own service.
+	groups *groupWebhook
 
 	mu       sync.Mutex
 	runtimes map[string]*channelRuntime
 }
 
-func newManager(api *backendClient, container *sqlstore.Container, log waLog.Logger) *manager {
+func newManager(api *backendClient, container *sqlstore.Container, log waLog.Logger, groups *groupWebhook) *manager {
 	return &manager{
 		api:       api,
 		container: container,
 		log:       log,
 		cache:     newMessageCache(),
 		echoes:    newEchoSet(),
+		groups:    groups,
 		runtimes:  make(map[string]*channelRuntime),
 	}
 }
@@ -313,13 +316,17 @@ func (m *manager) remoteJIDFor(ctx context.Context, runtime *channelRuntime, cha
 func (m *manager) processIncoming(ctx context.Context, runtime *channelRuntime, evt *events.Message) error {
 	// Remember every direct-chat message (own ones included) so later quotes
 	// and reactions can address it faithfully, even in anonymous @lid chats.
-	if !evt.Info.IsGroup && evt.Info.ID != "" {
+	// The chosen groups' messages too, so the service can answer quoting them.
+	if (!evt.Info.IsGroup || m.groups.wants(evt.Info)) && evt.Info.ID != "" {
 		m.cache.put(runtime.channelID, evt.Info.ID, cachedMessage{
 			raw:    evt.Message,
 			chat:   evt.Info.Chat,
 			sender: evt.Info.Sender,
 			fromMe: evt.Info.IsFromMe,
 		})
+	}
+	if m.groups.wants(evt.Info) {
+		return m.forwardGroupMessage(ctx, runtime, evt)
 	}
 	if isDirectOutgoing(evt.Info) {
 		return m.forwardOwnMessage(ctx, runtime, evt)

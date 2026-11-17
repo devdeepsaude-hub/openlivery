@@ -165,7 +165,8 @@ func main() {
 	}
 
 	api := newBackendClient(backendURL, token)
-	channels := newManager(api, container, log)
+	groups := newGroupWebhook(getenv("GROUP_WEBHOOK_URL", ""), getenv("GROUP_WEBHOOK_TOKEN", ""), getenv("GROUP_WEBHOOK_GROUPS", ""))
+	channels := newManager(api, container, log, groups)
 
 	server := &http.Server{
 		Addr:    net.JoinHostPort(host, port),

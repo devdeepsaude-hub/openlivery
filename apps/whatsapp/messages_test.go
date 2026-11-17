@@ -135,3 +135,30 @@ func TestEchoSetRecognisesOurOwnSends(t *testing.T) {
 		t.Fatal("the oldest ids must be forgotten once the set is full")
 	}
 }
+
+func TestOnlyTheChosenGroupsGoToTheGroupWebhook(t *testing.T) {
+	chosen := types.NewJID("120363000000000001", types.GroupServer)
+	other := types.NewJID("120363000000000002", types.GroupServer)
+	user := types.NewJID("5521999990000", types.DefaultUserServer)
+	hook := newGroupWebhook("http://service/group", "secret", " "+chosen.String()+", not-a-group@s.whatsapp.net")
+
+	if !hook.wants(directInfo(chosen, false, true)) {
+		t.Fatal("a message in a chosen group should go to the webhook")
+	}
+	if hook.wants(directInfo(chosen, true, true)) {
+		t.Fatal("our own messages in the group should not go to the webhook")
+	}
+	if hook.wants(directInfo(other, false, true)) {
+		t.Fatal("other groups should still be dropped")
+	}
+	if hook.wants(directInfo(user, false, false)) {
+		t.Fatal("direct chats are the agent's, not the webhook's")
+	}
+	if newGroupWebhook("http://service/group", "", chosen.String()) != nil || newGroupWebhook("", "secret", chosen.String()) != nil {
+		t.Fatal("without a URL and a token there is no webhook")
+	}
+	var none *groupWebhook
+	if none.wants(directInfo(chosen, false, true)) {
+		t.Fatal("no webhook configured means nothing goes anywhere")
+	}
+}
