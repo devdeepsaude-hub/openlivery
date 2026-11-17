@@ -142,9 +142,11 @@ async def send_chat(base_url: str, api_key: str, payload: dict, sampling: dict, 
     ``post`` lets a caller route through its own transport (the tool loop
     passes the one its tests stub).
     """
-    native = vendors.vendor_for_base_url(base_url) == "anthropic" and get_settings().anthropic_native
+    vendor = vendors.vendor_for_base_url(base_url)
+    native = vendor == "anthropic" and get_settings().anthropic_native
     if not native:
-        payload = _plain(payload)
+        # The Claude Code bridge caches the fixed part itself, so it gets the marker.
+        payload = _plain(payload, keep_boundary=vendor == "claude-code")
     candidates = [payload["model"], *vendors.fallback_models(base_url, payload["model"])]
     for index, model in enumerate(candidates):
         last = index == len(candidates) - 1
@@ -164,12 +166,13 @@ async def send_chat(base_url: str, api_key: str, payload: dict, sampling: dict, 
     raise AssertionError("unreachable")
 
 
-def _plain(payload: dict) -> dict:
+def _plain(payload: dict, keep_boundary: bool = False) -> dict:
     """The request as the chat-completions dialect takes it: the cache boundary
-    back to a paragraph break, and no content kept for Anthropic's own API."""
+    back to a paragraph break (unless the endpoint splits on it), and no
+    content kept for Anthropic's own API."""
     messages = [
         {**{key: value for key, value in message.items() if key != anthropic_native.NATIVE_CONTENT},
-         "content": without_boundary(message.get("content"))}
+         "content": message.get("content") if keep_boundary else without_boundary(message.get("content"))}
         for message in payload.get("messages") or []
     ]
     return {**payload, "messages": messages}

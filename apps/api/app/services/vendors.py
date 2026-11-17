@@ -40,6 +40,8 @@ VENDOR_HOSTS = {
     "anthropic": "api.anthropic.com",
     "deepseek": "api.deepseek.com",
     "google": "generativelanguage.googleapis.com",
+    # The Claude Code bridge lives wherever the deployment puts it.
+    "claude-code": (urlsplit(get_settings().claude_code_url).hostname or "").lower(),
 }
 
 # How long a vendor's model list is trusted, and how long a failed read is

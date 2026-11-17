@@ -78,6 +78,11 @@ class Settings(BaseSettings):
     # How long a cached prompt lives on that path: "5m" (written at 1.25x the
     # input price) or "1h" (2x), each read refreshing it.
     anthropic_cache_ttl: str = "5m"
+    # Where the "claude-code" provider lives: a bridge that speaks the chat
+    # completions dialect and answers through Claude Code on a Claude plan
+    # (deployment-side; it is not part of this repository). Its key is the
+    # bridge's own token, stored like any other provider key.
+    claude_code_url: str = "http://claude-ponte:8787/v1"
     # How much of each tool result an earlier reply carries in the history,
     # in the internal note that keeps the agent from redoing or contradicting
     # what its tools returned. A result cut there is marked as cut.

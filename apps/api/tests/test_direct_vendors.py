@@ -22,6 +22,7 @@ def vendor_lists(monkeypatch):
         "anthropic": ["claude-sonnet-5-20260901", "claude-haiku-4-5-20251001"],
         "deepseek": ["deepseek-flash", "deepseek-v4-pro"],
         "google": ["gemini-3.8-flash", "gemini-embedding-001", "gemini-2.5-flash-preview-tts"],
+        "claude-code": ["claude-sonnet-5-5", "claude-opus-5-5"],
     }
 
     async def _models(vendor, base_url, api_key):
@@ -53,6 +54,7 @@ def test_base_urls_name_their_vendor():
     assert vendors.vendor_for_base_url("https://api.anthropic.com/v1") == "anthropic"
     assert vendors.vendor_for_base_url("https://generativelanguage.googleapis.com/v1beta/openai") == "google"
     assert vendors.vendor_for_base_url("https://openrouter.ai/api/v1") is None
+    assert vendors.vendor_for_base_url("http://claude-ponte:8787/v1") == "claude-code"
 
 
 def test_openrouter_requests_go_out_unchanged():
@@ -172,6 +174,39 @@ def test_vendors_without_audio_refuse_to_transcribe():
     with pytest.raises(Exception) as excinfo:
         asyncio.run(media.transcribe_audio("https://api.deepseek.com", "sk-ds", "deepseek/deepseek-flash", b"ogg"))
     assert "does not transcribe" in str(getattr(excinfo.value, "detail", excinfo.value))
+
+
+def test_a_claude_code_slug_is_served_by_the_bridge(authenticated_client: TestClient):
+    client = authenticated_client
+    agent_id = _agent(client, "claude-code/claude-sonnet-5-5")
+    assert client.put("/api/providers/claude-code", json={"api_key": "bridge-token"}).status_code == 200
+    with TestingSession() as db:
+        assert providers.resolve_agent_credentials(db, db.get(Agent, agent_id)) == ("http://claude-ponte:8787/v1", "bridge-token")
+
+
+def test_the_bridge_gets_the_cache_boundary_and_no_vendor_extras(monkeypatch):
+    from app.services import ai
+    from app.services.prompt_cache import CACHE_BOUNDARY
+
+    sent: list[tuple[str, dict, dict]] = []
+
+    async def _post(url, headers, payload, sampling, timeout=90):
+        sent.append((url, payload, sampling))
+        return {"choices": [{"message": {"content": "Oi!"}}], "usage": {"prompt_tokens": 5, "completion_tokens": 2}}
+
+    monkeypatch.setattr(ai, "_post_json", _post)
+    system = {"role": "system", "content": f"fixed{CACHE_BOUNDARY}changing"}
+    payload = {"model": "claude-code/claude-sonnet-5-5", "messages": [system], "usage": {"include": True}}
+    asyncio.run(ai.send_chat("http://claude-ponte:8787/v1", "bridge-token", payload, {"temperature": 0.3, "max_tokens": 500}))
+    url, wire, sampling = sent[0]
+    assert url == "http://claude-ponte:8787/v1/chat/completions"
+    assert wire["model"] == "claude-sonnet-5-5" and "usage" not in wire
+    assert wire["messages"][0]["content"] == f"fixed{CACHE_BOUNDARY}changing"
+    # No thinking setting: that one is for Anthropic's own endpoint.
+    assert sampling == {"temperature": 0.3, "max_tokens": 500}
+
+    asyncio.run(ai.send_chat("https://api.deepseek.com", "sk-test", {**payload, "model": "deepseek/deepseek-v4-pro"}, {}))
+    assert CACHE_BOUNDARY not in sent[1][1]["messages"][0]["content"]
 
 
 def _fallbacks(monkeypatch, chat: str = "", transcription: str | None = None):

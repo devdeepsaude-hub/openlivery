@@ -18,6 +18,7 @@ from typing import Any, Literal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..models import Agent, ProviderCredential
 from ..security import decrypt_secret
 
@@ -38,6 +39,9 @@ PROVIDERS: dict[str, dict[str, str]] = {
     "anthropic": {"label": "Anthropic", "base_url": "https://api.anthropic.com/v1", "vendor": "anthropic"},
     "deepseek": {"label": "DeepSeek", "base_url": "https://api.deepseek.com", "vendor": "deepseek"},
     "google": {"label": "Google Gemini", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai", "vendor": "google"},
+    # Claude through a Claude plan instead of an API key: slugs read
+    # ``claude-code/claude-sonnet-5-5`` and go to the bridge in CLAUDE_CODE_URL.
+    "claude-code": {"label": "Claude Code", "base_url": get_settings().claude_code_url, "vendor": "claude-code"},
 }
 SUPPORTED = tuple(PROVIDERS)
 DEFAULT_PROVIDER = "openrouter"
